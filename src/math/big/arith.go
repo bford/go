@@ -163,6 +163,27 @@ func subVV_g(z, x, y []Word) (c Word) {
 	return
 }
 
+// Compare word vectors by subtracting x-y but retaining only the carry.
+// The resulting carry c is either 0 or 1.
+func cmpVV_g(x, y []Word) (gt, lt Word) {
+	if use_addWW_g {
+		for i := range x {
+			lt, _ = subWW_g(x[i], y[i], lt)
+			gt, _ = subWW_g(y[i], x[i], gt)
+		}
+		return
+	}
+
+	for i, xi := range x {
+		yi := y[i]
+		zlt := xi - yi - lt
+		lt = (yi&^xi | (yi|^xi)&zlt) >> (_W - 1)
+		zgt := yi - xi - gt
+		gt = (xi&^yi | (xi|^yi)&zgt) >> (_W - 1)
+	}
+	return
+}
+
 // The resulting carry c is either 0 or 1.
 func addVW_g(z, x []Word, y Word) (c Word) {
 	if use_addWW_g {

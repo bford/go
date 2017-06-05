@@ -152,18 +152,8 @@ func (x nat) cmp(y nat) (r int) {
 		return
 	}
 
-	i := m - 1
-	for i > 0 && x[i] == y[i] {
-		i--
-	}
-
-	switch {
-	case x[i] < y[i]:
-		r = -1
-	case x[i] > y[i]:
-		r = 1
-	}
-	return
+	gt, lt := cmpVV_g(x, y)
+	return int(gt) - int(lt)
 }
 
 func (z nat) mulAddWW(x nat, y, r Word) nat {
