@@ -32,47 +32,44 @@ const (
 
 // z1<<_W + z0 = x+y+c, with c == 0 or 1
 func addWW_g(x, y, c Word) (z1, z0 Word) {
-	yc := y + c
-	z0 = x + yc
-	if z0 < x || yc < y {
-		z1 = 1
-	}
+	// Add half-words at a time to compute carries in constant time
+	zl := (x & _M2) + (y & _M2) + c
+	zh := (x >> _W2) + (y >> _W2) + (zl >> _W2)
+	z1 = zh >> _W2
+	z0 = (zh << _W2) + (zl & _M2)
 	return
 }
 
 // z1<<_W + z0 = x-y-c, with c == 0 or 1
 func subWW_g(x, y, c Word) (z1, z0 Word) {
-	yc := y + c
-	z0 = x - yc
-	if z0 > x || yc < y {
-		z1 = 1
-	}
+	zl := (x & _M2) - (y & _M2) - c
+	zh := (x >> _W2) - (y >> _W2) - (zl >> (_W-1))
+	z1 = zh >> (_W-1)
+	z0 = (zh << _W2) + (zl & _M2)
 	return
 }
 
 // z1<<_W + z0 = x*y
-// Adapted from Warren, Hacker's Delight, p. 132.
 func mulWW_g(x, y Word) (z1, z0 Word) {
+	return mulAddWWW_g(x, y, 0)
+}
+
+// z1<<_W + z0 = x*y + c
+// Adapted from Warren, Hacker's Delight, p. 132.
+func mulAddWWW_g(x, y, c Word) (z1, z0 Word) {
 	x0 := x & _M2
 	x1 := x >> _W2
 	y0 := y & _M2
 	y1 := y >> _W2
-	w0 := x0 * y0
-	t := x1*y0 + w0>>_W2
+	c0 := c & _M2
+	c1 := c >> _W2
+	w0 := x0 * y0 + c0
+	t := x1*y0 + w0>>_W2 + c1
 	w1 := t & _M2
 	w2 := t >> _W2
 	w1 += x0 * y1
 	z1 = x1*y1 + w2 + w1>>_W2
-	z0 = x * y
-	return
-}
-
-// z1<<_W + z0 = x*y + c
-func mulAddWWW_g(x, y, c Word) (z1, z0 Word) {
-	z1, zz0 := mulWW_g(x, y)
-	if z0 = zz0 + c; z0 < zz0 {
-		z1++
-	}
+	z0 = x * y + c
 	return
 }
 
@@ -126,7 +123,7 @@ func divWW_g(u1, u0, v Word) (q, r Word) {
 
 // Keep for performance debugging.
 // Using addWW_g is likely slower.
-const use_addWW_g = false
+const use_addWW_g = true
 
 // The resulting carry c is either 0 or 1.
 func addVV_g(z, x, y []Word) (c Word) {
