@@ -39,14 +39,9 @@ func ConstantTimeByteEq(x, y uint8) int {
 
 // ConstantTimeEq returns 1 if x == y and 0 otherwise.
 func ConstantTimeEq(x, y int32) int {
-	z := ^(x ^ y)
-	z &= z >> 16
-	z &= z >> 8
-	z &= z >> 4
-	z &= z >> 2
-	z &= z >> 1
-
-	return int(z & 1)
+	z := uint32(x ^ y)
+	z = (z >> 16) | (z & 0xffff)
+	return int((z - 1) >> 31)
 }
 
 // ConstantTimeCopy copies the contents of y into x (a slice of equal length)
