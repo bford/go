@@ -85,13 +85,13 @@ func (z nat) set(x nat) nat {
 	return z
 }
 
-func (z nat) add(x, y nat) nat {
+func (z nat) uadd(x, y nat) nat {
 	m := len(x)
 	n := len(y)
 
 	switch {
 	case m < n:
-		return z.add(y, x)
+		return z.uadd(y, x)
 	case m == 0:
 		// n == 0 because m >= n; result is 0
 		return z[:0]
@@ -108,16 +108,20 @@ func (z nat) add(x, y nat) nat {
 	}
 	z[m] = c
 
-	return z.norm()
+	return z
 }
 
-func (z nat) sub(x, y nat) nat {
+func (z nat) add(x, y nat) nat {
+	return z.uadd(x, y).norm()
+}
+
+func (z nat) usub(x, y nat) nat {
 	m := len(x)
 	n := len(y)
 
 	switch {
 	case m < n:
-		panic("underflow")
+		return z.usub(y, x)
 	case m == 0:
 		// n == 0 because m >= n; result is 0
 		return z[:0]
@@ -136,23 +140,38 @@ func (z nat) sub(x, y nat) nat {
 		panic("underflow")
 	}
 
-	return z.norm()
+	return z
+}
+
+func (z nat) sub(x, y nat) nat {
+	return z.usub(x, y).norm()
+}
+
+// eqzero returns 1 if w is zero and 0 otherwise, in constant time
+func eqzero(w Word) Word {
+	w = (w >> _W2) | (w & _M2)
+	return (w - 1) >> (_W - 1)
 }
 
 func (x nat) cmp(y nat) (r int) {
 	m := len(x)
 	n := len(y)
-	if m != n || m == 0 {
-		switch {
-		case m < n:
-			r = -1
-		case m > n:
-			r = 1
-		}
-		return
-	}
 
-	gt, lt := cmpVV_g(x, y)
+	switch {
+	case m < n:
+		return -y.cmp(x)
+	case m == 0:
+		// n == 0 because m >= n; result is 0 (equal)
+		return 0
+	}
+	// m > 0
+
+	lt, ne := cmpVV_g(x[0:n], y)
+	if m > n {
+		lt, ne = cmpVW_g(x[n:], lt, ne)
+	}
+	gt := 1 - (lt | eqzero(ne))
+
 	return int(gt) - int(lt)
 }
 
@@ -440,19 +459,19 @@ func (z nat) mul(x, y nat) nat {
 		var t nat
 
 		// add x0*y1*b
-		x0 := x0.norm()
+	//	x0 := x0.norm()
 		y1 := y[k:]       // y1 is normalized because y is
 		t = t.mul(x0, y1) // update t so we don't lose t's underlying array
 		addAt(z, t, k)
 
 		// add xi*y0<<i, xi*y1*b<<(i+k)
-		y0 := y0.norm()
+	//	y0 := y0.norm()
 		for i := k; i < len(x); i += k {
 			xi := x[i:]
 			if len(xi) > k {
 				xi = xi[:k]
 			}
-			xi = xi.norm()
+	//		xi = xi.norm()
 			t = t.mul(xi, y0)
 			addAt(z, t, i)
 			t = t.mul(xi, y1)

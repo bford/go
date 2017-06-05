@@ -123,7 +123,7 @@ func divWW_g(u1, u0, v Word) (q, r Word) {
 
 // Keep for performance debugging.
 // Using addWW_g is likely slower.
-const use_addWW_g = true
+const use_addWW_g = false
 
 // The resulting carry c is either 0 or 1.
 func addVV_g(z, x, y []Word) (c Word) {
@@ -164,22 +164,23 @@ func subVV_g(z, x, y []Word) (c Word) {
 }
 
 // Compare word vectors by subtracting x-y but retaining only the carry.
-// The resulting carry c is either 0 or 1.
-func cmpVV_g(x, y []Word) (gt, lt Word) {
+// Returns lt = 1 if x < y or 0 otherwise.
+// Returns ne = 0 if x == y and an arbitrary nonzero number otherwise.
+func cmpVV_g(x, y []Word) (lt, ne Word) {
 	if use_addWW_g {
+		var zi Word
 		for i := range x {
-			lt, _ = subWW_g(x[i], y[i], lt)
-			gt, _ = subWW_g(y[i], x[i], gt)
+			lt, zi = subWW_g(x[i], y[i], lt)
+			ne |= zi
 		}
 		return
 	}
 
 	for i, xi := range x {
 		yi := y[i]
-		zlt := xi - yi - lt
-		lt = (yi&^xi | (yi|^xi)&zlt) >> (_W - 1)
-		zgt := yi - xi - gt
-		gt = (xi&^yi | (xi|^yi)&zgt) >> (_W - 1)
+		zi := xi - yi - lt
+		lt = (yi&^xi | (yi|^xi)&zi) >> (_W - 1)
+		ne |= zi
 	}
 	return
 }
@@ -219,6 +220,24 @@ func subVW_g(z, x []Word, y Word) (c Word) {
 		c = (zi &^ xi) >> (_W - 1)
 	}
 	return
+}
+
+func cmpVW_g(x []Word, lt, ne Word) (Word, Word) {
+	if use_addWW_g {
+		var zi Word
+		for _, xi := range x {
+			lt, zi = subWW_g(xi, lt, 0)
+			ne |= zi
+		}
+		return lt, ne
+	}
+
+	for _, xi := range x {
+		zi := xi - lt
+		lt = (zi &^ xi) >> (_W - 1)
+		ne |= zi
+	}
+	return lt, ne
 }
 
 func shlVU_g(z, x []Word, s uint) (c Word) {
