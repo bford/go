@@ -56,6 +56,18 @@ var cmpTests = []struct {
 	{nat{0}, nat{1}, -1},
 	{nat{1}, nat{0}, 1},
 	{nat{1}, nat{1}, 0},
+	{nat{0, 0}, nat{0}, 0},		// unnormalized x
+	{nat{0, 0}, nat{1}, -1},
+	{nat{1, 0}, nat{0}, 1},
+	{nat{1, 0}, nat{1}, 0},
+	{nat{0}, nat{0, 0}, 0},		// unnormalized y
+	{nat{0}, nat{1, 0}, -1},
+	{nat{1}, nat{0, 0}, 1},
+	{nat{1}, nat{1, 0}, 0},
+	{nat{0, 0}, nat{0, 0}, 0},	// unnormalized x,y
+	{nat{0, 0}, nat{1, 0}, -1},
+	{nat{1, 0}, nat{0, 0}, 1},
+	{nat{1, 0}, nat{1, 0}, 0},
 	{nat{0, _M}, nat{1}, 1},
 	{nat{1}, nat{0, _M}, -1},
 	{nat{1, _M}, nat{0, _M}, 1},
