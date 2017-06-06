@@ -361,19 +361,29 @@ func karatsuba(z, x, y nat, vartime bool) {
 	karatsuba(z[n:], x1, y1, vartime) // z2 = x1*y1
 
 	// compute xd (or the negative value if underflow occurs)
-	s := 1 // sign of product xd*yd
+	neg := Word(0) // whether product xd*yd is negative
 	xd := z[2*n : 2*n+n2]
-	if subVV(xd, x1, x0) != 0 { // x1-x0
-		s = -s
+	c := subVV(xd, x1, x0)	// x1-x0
+	if !vartime {
+		xt := z[3*n : 3*n+n2]	// temporary for selection
+		subVV(xt, x0, x1) // x0-x1
+		xd.sel(xd, xt, c)
+	} else if c != 0 { // variable-time operation
 		subVV(xd, x0, x1) // x0-x1
 	}
+	neg ^= c
 
 	// compute yd (or the negative value if underflow occurs)
 	yd := z[2*n+n2 : 3*n]
-	if subVV(yd, y0, y1) != 0 { // y0-y1
-		s = -s
+	c = subVV(yd, y0, y1)	// y0-y1
+	if !vartime {
+		yt := z[3*n : 3*n+n2]
+		subVV(yt, y1, y0) // y1-y0
+		yd.sel(yd, yt, c)
+	} else if c != 0 { // variable-time operation
 		subVV(yd, y1, y0) // y1-y0
 	}
+	neg ^= c
 
 	// p = (x1-x0)*(y0-y1) == x1*y0 - x1*y1 - x0*y0 + x0*y1 for s > 0
 	// p = (x0-x1)*(y0-y1) == x0*y0 - x0*y1 - x1*y0 + x1*y1 for s < 0
@@ -393,12 +403,18 @@ func karatsuba(z, x, y nat, vartime bool) {
 	//   +    [ z2  ]
 	//   +    [  p  ]
 	//
-	karatsubaAdd(z[n2:], r, n, vartime)
-	karatsubaAdd(z[n2:], r[n:], n, vartime)
-	if s > 0 {
-		karatsubaAdd(z[n2:], p, n, vartime)
+	zn2 := z[n2:n*2]
+	karatsubaAdd(zn2, r, n, vartime)
+	karatsubaAdd(zn2, r[n:], n, vartime)
+	if !vartime {
+		copy(r, zn2)	// reuse r again as a temporary for selection
+		karatsubaAdd(zn2, p, n, vartime)
+		karatsubaSub(r, p, n, vartime)
+		zn2.sel(zn2, r, neg)
+	} else if neg == 0 {
+		karatsubaAdd(zn2, p, n, vartime)
 	} else {
-		karatsubaSub(z[n2:], p, n, vartime)
+		karatsubaSub(zn2, p, n, vartime)
 	}
 }
 
