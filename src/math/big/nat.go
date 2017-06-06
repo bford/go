@@ -426,9 +426,9 @@ func alias(x, y nat) bool {
 // addAt implements z += x<<(_W*i); z must be long enough.
 // (we don't use nat.add because we need z to stay the same
 // slice, and we don't need to normalize z after each addition)
-func addAt(z, x nat, i int) {
+func addAt(z, x nat, i int, vartime bool) {
 	if n := len(x); n > 0 {
-		if c := addVV(z[i:i+n], z[i:], x); c != 0 {
+		if c := addVV(z[i:i+n], z[i:], x); !vartime || c != 0 {
 			j := i + n
 			if j < len(z) {
 				addVW(z[j:], z[j:], c)
@@ -463,7 +463,7 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 
 	switch {
 	case m < n:
-		return z.mul(y, x)
+		return z.umul(y, x, vartime)
 	case m == 0 || n == 0:
 		return z[:0]
 	case n == 1:
@@ -480,7 +480,7 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 	if n < karatsubaThreshold {
 		z = z.make(m + n)
 		basicMul(z, x, y, vartime)
-		return z.norm()
+		return z
 	}
 	// m >= n && n >= karatsubaThreshold && n >= 2
 
@@ -523,7 +523,7 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 		}
 		y1 := y[k:]       // y1 is normalized because y is
 		t = t.mul(x0, y1) // update t so we don't lose t's underlying array
-		addAt(z, t, k)
+		addAt(z, t, k, vartime)
 
 		// add xi*y0<<i, xi*y1*b<<(i+k)
 		if vartime {
@@ -538,9 +538,9 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 				xi = xi.norm()
 			}
 			t = t.mul(xi, y0)
-			addAt(z, t, i)
+			addAt(z, t, i, vartime)
 			t = t.mul(xi, y1)
-			addAt(z, t, i+k)
+			addAt(z, t, i+k, vartime)
 		}
 	}
 
@@ -719,10 +719,12 @@ func (z nat) divLarge(u, uIn, v nat) (q, r nat) {
 	return q, r
 }
 
-// Length of x in bits. x must be normalized.
+// Length of x in bits. x need not be normalized.
 func (x nat) bitLen() int {
-	if i := len(x) - 1; i >= 0 {
-		return i*_W + bits.Len(uint(x[i]))
+	for i := len(x) - 1; i >= 0; i-- {
+		if xi := x[i]; xi != 0 {
+			return i*_W + bits.Len(uint(xi))
+		}
 	}
 	return 0
 }
