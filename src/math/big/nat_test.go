@@ -470,7 +470,12 @@ func TestMontgomery(t *testing.T) {
 		}
 
 		// check montgomery with correct k0 produces correct output
-		z := nat(nil).montgomery(x, y, m, k0, len(m))
+		z := nat(nil).montgomery(x, y, m, k0, len(m), nil)
+		z = z.norm()
+		if z.cmp(out) != 0 {
+			t.Errorf("#%d: got 0x%s want 0x%s", i, z.utoa(16), out.utoa(16))
+		}
+		z = z.montgomery(x, y, m, k0, len(m), make(nat, len(m)))
 		z = z.norm()
 		if z.cmp(out) != 0 {
 			t.Errorf("#%d: got 0x%s want 0x%s", i, z.utoa(16), out.utoa(16))

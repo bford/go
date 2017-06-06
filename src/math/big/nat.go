@@ -34,6 +34,13 @@ var (
 	natTen = nat{10}
 )
 
+// Determines whether normalizing mul, expNN, etc operations
+// allow variable-time computation.
+// Normally true since normalizing operations are inherently vartime anyway,
+// but sometimes useful to set to false for testing purposes.
+const defaultVarTime = true
+
+
 // zeroW returns 1 if w is zero and 0 otherwise, in constant time
 func zeroW(w Word) Word {
 	w = (w >> _W2) | (w & _M2)
@@ -52,6 +59,15 @@ func (z nat) zero() Word {
 func (z nat) clear() {
 	for i := range z {
 		z[i] = 0
+	}
+}
+
+// set z to x if v == 0 and to y if v == 1, in constant time
+func (z nat) sel(x, y nat, v Word) {
+	xmask := v-1
+	ymask := ^xmask
+	for i := range z {
+		z[i] = x[i] & xmask | y[i] & ymask
 	}
 }
 
@@ -231,7 +247,8 @@ func basicMul(z, x, y nat, vartime bool) {
 // In the terminology of that paper, this is an "Almost Montgomery Multiplication":
 // x and y are required to satisfy 0 <= z < 2**(n*_W) and then the result
 // z is guaranteed to satisfy 0 <= z < 2**(n*_W), but it may not be < m.
-func (z nat) montgomery(x, y, m nat, k Word, n int) nat {
+// For constant-time operation, zt must be a temporary nat the size of z.
+func (z nat) montgomery(x, y, m nat, k Word, n int, zt nat) nat {
 	// This code assumes x, y, m are all the same length, n.
 	// (required by addMulVVW and the for loop).
 	// It also assumes that x, y are already reduced mod m,
@@ -251,29 +268,32 @@ func (z nat) montgomery(x, y, m nat, k Word, n int) nat {
 		cx := c + c2
 		cy := cx + c3
 		z[n-1] = cy
-		if cx < c2 || cy < c3 {
-			c = 1
-		} else {
-			c = 0
-		}
+		// see "Hacker's Delight", section 2-12 (overflow detection)
+		c = (c&c2 | (c|c2)&^cx) >> (_W - 1)
+		c |= (cx&c3 | (cx|c3)&^cy) >> (_W - 1)
 	}
-	if c != 0 {
-		subVV(z, z, m)
+	if zt == nil {	// variable-time operation
+		if c != 0 {
+			subVV(z, z, m)
+		}
+	} else {	// constant-time operation
+		subVV(zt, z, m)
+		z.sel(z, zt, c)
 	}
 	return z
 }
 
 // Fast version of z[0:n+n>>1].add(z[0:n+n>>1], x[0:n]) w/o bounds checks.
 // Factored out for readability - do not use outside karatsuba.
-func karatsubaAdd(z, x nat, n int) {
-	if c := addVV(z[0:n], z, x); c != 0 {
+func karatsubaAdd(z, x nat, n int, vartime bool) {
+	if c := addVV(z[0:n], z, x); !vartime || c != 0 {
 		addVW(z[n:n+n>>1], z[n:], c)
 	}
 }
 
 // Like karatsubaAdd, but does subtract.
-func karatsubaSub(z, x nat, n int) {
-	if c := subVV(z[0:n], z, x); c != 0 {
+func karatsubaSub(z, x nat, n int, vartime bool) {
+	if c := subVV(z[0:n], z, x); !vartime || c != 0 {
 		subVW(z[n:n+n>>1], z[n:], c)
 	}
 }
@@ -373,12 +393,12 @@ func karatsuba(z, x, y nat, vartime bool) {
 	//   +    [ z2  ]
 	//   +    [  p  ]
 	//
-	karatsubaAdd(z[n2:], r, n)
-	karatsubaAdd(z[n2:], r[n:], n)
+	karatsubaAdd(z[n2:], r, n, vartime)
+	karatsubaAdd(z[n2:], r[n:], n, vartime)
 	if s > 0 {
-		karatsubaAdd(z[n2:], p, n)
+		karatsubaAdd(z[n2:], p, n, vartime)
 	} else {
-		karatsubaSub(z[n2:], p, n)
+		karatsubaSub(z[n2:], p, n, vartime)
 	}
 }
 
@@ -512,7 +532,7 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 }
 
 func (z nat) mul(x, y nat) nat {
-	return z.umul(x, y, true).norm()
+	return z.umul(x, y, defaultVarTime).norm()
 }
 
 // mulRange computes the product of all the unsigned integers in the
@@ -919,7 +939,7 @@ func (z nat) random(rand *rand.Rand, limit nat, n int) nat {
 
 // If m != 0 (i.e., len(m) != 0), expNN sets z to x**y mod m;
 // otherwise it sets z to x**y. The result is the value of z.
-func (z nat) expNN(x, y, m nat) nat {
+func (z nat) uexpNN(x, y, m nat, vartime bool) nat {
 	if alias(z, x) || alias(z, y) {
 		// We cannot allow in-place modification of x or y.
 		z = nil
@@ -957,7 +977,7 @@ func (z nat) expNN(x, y, m nat) nat {
 	// operations. Uses Montgomery method for odd moduli.
 	if x.cmp(natOne) > 0 && len(y) > 1 && len(m) > 0 {
 		if m[0]&1 == 1 {
-			return z.expNNMontgomery(x, y, m)
+			return z.expNNMontgomery(x, y, m, vartime)
 		}
 		return z.expNNWindowed(x, y, m)
 	}
@@ -1016,6 +1036,10 @@ func (z nat) expNN(x, y, m nat) nat {
 	}
 
 	return z.norm()
+}
+
+func (z nat) expNN(x, y, m nat) nat {
+	return z.uexpNN(x, y, m, defaultVarTime).norm()
 }
 
 // expNNWindowed calculates x**y mod m using a fixed, 4-bit window.
@@ -1083,7 +1107,7 @@ func (z nat) expNNWindowed(x, y, m nat) nat {
 
 // expNNMontgomery calculates x**y mod m using a fixed, 4-bit window.
 // Uses Montgomery representation.
-func (z nat) expNNMontgomery(x, y, m nat) nat {
+func (z nat) expNNMontgomery(x, y, m nat, vartime bool) nat {
 	numWords := len(m)
 
 	// We want the lengths of x and m to be equal.
@@ -1122,13 +1146,19 @@ func (z nat) expNNMontgomery(x, y, m nat) nat {
 	one := make(nat, numWords)
 	one[0] = 1
 
+	// for constant-time operation we'll need a temporary to select from
+	zt := nat(nil)
+	if !vartime {
+		zt = make(nat, numWords)
+	}
+
 	const n = 4
 	// powers[i] contains x^i
 	var powers [1 << n]nat
-	powers[0] = powers[0].montgomery(one, RR, m, k0, numWords)
-	powers[1] = powers[1].montgomery(x, RR, m, k0, numWords)
+	powers[0] = powers[0].montgomery(one, RR, m, k0, numWords, zt)
+	powers[1] = powers[1].montgomery(x, RR, m, k0, numWords, zt)
 	for i := 2; i < 1<<n; i++ {
-		powers[i] = powers[i].montgomery(powers[i-1], powers[1], m, k0, numWords)
+		powers[i] = powers[i].montgomery(powers[i-1], powers[1], m, k0, numWords, zt)
 	}
 
 	// initialize z = 1 (Montgomery 1)
@@ -1142,18 +1172,18 @@ func (z nat) expNNMontgomery(x, y, m nat) nat {
 		yi := y[i]
 		for j := 0; j < _W; j += n {
 			if i != len(y)-1 || j != 0 {
-				zz = zz.montgomery(z, z, m, k0, numWords)
-				z = z.montgomery(zz, zz, m, k0, numWords)
-				zz = zz.montgomery(z, z, m, k0, numWords)
-				z = z.montgomery(zz, zz, m, k0, numWords)
+				zz = zz.montgomery(z, z, m, k0, numWords, zt)
+				z = z.montgomery(zz, zz, m, k0, numWords, zt)
+				zz = zz.montgomery(z, z, m, k0, numWords, zt)
+				z = z.montgomery(zz, zz, m, k0, numWords, zt)
 			}
-			zz = zz.montgomery(z, powers[yi>>(_W-n)], m, k0, numWords)
+			zz = zz.montgomery(z, powers[yi>>(_W-n)], m, k0, numWords, zt)
 			z, zz = zz, z
 			yi <<= n
 		}
 	}
 	// convert to regular number
-	zz = zz.montgomery(z, one, m, k0, numWords)
+	zz = zz.montgomery(z, one, m, k0, numWords, zt)
 
 	// One last reduction, just in case.
 	// See golang.org/issue/13907.
