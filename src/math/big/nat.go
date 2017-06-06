@@ -209,10 +209,16 @@ func (z nat) mulAddWW(x nat, y, r Word) nat {
 
 // basicMul multiplies x and y and leaves the result in z.
 // The (non-normalized) result is placed in z[0 : len(x) + len(y)].
-func basicMul(z, x, y nat) {
+func basicMul(z, x, y nat, vartime bool) {
 	z[0 : len(x)+len(y)].clear() // initialize z
 	for i, d := range y {
-		z[len(x)+i] = addMulVVW(z[i:i+len(x)], x, d)
+		// Optimize multiplies of zero words only if vartime allowed.
+		// Assumes compiled code branches on !vartime either before or
+		// atomically with d != 0: does Go guarantee standard
+		// evaluation order for || or is there a way to force it?
+		if !vartime || d != 0 {
+			z[len(x)+i] = addMulVVW(z[i:i+len(x)], x, d)
+		}
 	}
 }
 
@@ -281,14 +287,14 @@ var karatsubaThreshold int = 40 // computed by calibrate.go
 // Both x and y must have the same length n and n must be a
 // power of 2. The result vector z must have len(z) >= 6*n.
 // The (non-normalized) result is placed in z[0 : 2*n].
-func karatsuba(z, x, y nat) {
+func karatsuba(z, x, y nat, vartime bool) {
 	n := len(y)
 
 	// Switch to basic multiplication if numbers are odd or small.
 	// (n is always even if karatsubaThreshold is even, but be
 	// conservative)
 	if n&1 != 0 || n < karatsubaThreshold || n < 2 {
-		basicMul(z, x, y)
+		basicMul(z, x, y, vartime)
 		return
 	}
 	// n&1 == 0 && n >= karatsubaThreshold && n >= 2
@@ -331,8 +337,8 @@ func karatsuba(z, x, y nat) {
 	// caller's z.
 
 	// compute z0 and z2 with the result "in place" in z
-	karatsuba(z, x0, y0)     // z0 = x0*y0
-	karatsuba(z[n:], x1, y1) // z2 = x1*y1
+	karatsuba(z, x0, y0, vartime)     // z0 = x0*y0
+	karatsuba(z[n:], x1, y1, vartime) // z2 = x1*y1
 
 	// compute xd (or the negative value if underflow occurs)
 	s := 1 // sign of product xd*yd
@@ -352,7 +358,7 @@ func karatsuba(z, x, y nat) {
 	// p = (x1-x0)*(y0-y1) == x1*y0 - x1*y1 - x0*y0 + x0*y1 for s > 0
 	// p = (x0-x1)*(y0-y1) == x0*y0 - x0*y1 - x1*y0 + x1*y1 for s < 0
 	p := z[n*3:]
-	karatsuba(p, xd, yd)
+	karatsuba(p, xd, yd, vartime)
 
 	// save original z2:z0
 	// (ok to use upper half of z since we're done recursing)
@@ -415,7 +421,7 @@ func karatsubaLen(n int) int {
 	return n << i
 }
 
-func (z nat) mul(x, y nat) nat {
+func (z nat) umul(x, y nat, vartime bool) nat {
 	m := len(x)
 	n := len(y)
 
@@ -437,7 +443,7 @@ func (z nat) mul(x, y nat) nat {
 	// use basic multiplication if the numbers are small
 	if n < karatsubaThreshold {
 		z = z.make(m + n)
-		basicMul(z, x, y)
+		basicMul(z, x, y, vartime)
 		return z.norm()
 	}
 	// m >= n && n >= karatsubaThreshold && n >= 2
@@ -455,7 +461,7 @@ func (z nat) mul(x, y nat) nat {
 	x0 := x[0:k]              // x0 is not normalized
 	y0 := y[0:k]              // y0 is not normalized
 	z = z.make(max(6*k, m+n)) // enough space for karatsuba of x0*y0 and full result of x*y
-	karatsuba(z, x0, y0)
+	karatsuba(z, x0, y0, vartime)
 	z = z[0 : m+n]  // z has final length but may be incomplete
 	z[2*k:].clear() // upper portion of z is garbage (and 2*k <= m+n since k <= n <= m)
 
@@ -476,19 +482,25 @@ func (z nat) mul(x, y nat) nat {
 		var t nat
 
 		// add x0*y1*b
-	//	x0 := x0.norm()
+		if vartime {
+			x0 = x0.norm()
+		}
 		y1 := y[k:]       // y1 is normalized because y is
 		t = t.mul(x0, y1) // update t so we don't lose t's underlying array
 		addAt(z, t, k)
 
 		// add xi*y0<<i, xi*y1*b<<(i+k)
-	//	y0 := y0.norm()
+		if vartime {
+			y0 = y0.norm()
+		}
 		for i := k; i < len(x); i += k {
 			xi := x[i:]
 			if len(xi) > k {
 				xi = xi[:k]
 			}
-	//		xi = xi.norm()
+			if vartime {
+				xi = xi.norm()
+			}
 			t = t.mul(xi, y0)
 			addAt(z, t, i)
 			t = t.mul(xi, y1)
@@ -496,7 +508,11 @@ func (z nat) mul(x, y nat) nat {
 		}
 	}
 
-	return z.norm()
+	return z
+}
+
+func (z nat) mul(x, y nat) nat {
+	return z.umul(x, y, true).norm()
 }
 
 // mulRange computes the product of all the unsigned integers in the
