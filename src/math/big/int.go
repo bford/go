@@ -18,9 +18,10 @@ import (
 type Int struct {
 	neg bool // sign
 	abs nat  // absolute value of the integer
+	cap int  // result size in words for constant-time, 0 for vartime
 }
 
-var intOne = &Int{false, natOne}
+var intOne = &Int{false, natOne, 0}
 
 // Sign returns:
 //
@@ -414,6 +415,28 @@ func (x *Int) Bytes() []byte {
 // The bit length of 0 is 0.
 func (x *Int) BitLen() int {
 	return x.abs.bitLen()
+}
+
+// BitCap returns the current result capacity in bits
+// for constant-time operation, or 0 for variable-time operation.
+// This may be somewhat larger than the last value set via SetBitCap.
+func (x *Int) BitCap() int {
+	return x.cap * _W
+}
+
+// SetBitCap fixes the result capacity to b bits and enables constant-time
+// operation if b > 0, or sets variable-time operation (the default) if b == 0.
+// In constant-time operation, the caller is responsible for ensuring that
+// results actually computed fit within the specified bit capacity.
+// Operations producing too-large results may (but might not always) panic.
+// Not all big.Int methods have constant-time implementations;
+// those that do are explicitly documented as such.
+func (x *Int) SetBitCap(cap int) *Int {
+	if cap < 0 {
+		panic("negative cap")
+	}
+	x.cap = (cap + _W - 1) / _W
+	return x
 }
 
 // Exp sets z = x**y mod |m| (i.e. the sign of m is ignored), and returns z.

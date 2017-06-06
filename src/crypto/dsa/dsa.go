@@ -197,7 +197,10 @@ func fermatInverse(k, P *big.Int) *big.Int {
 func Sign(rand io.Reader, priv *PrivateKey, hash []byte) (r, s *big.Int, err error) {
 	// FIPS 186-3, section 4.6
 
-	n := priv.Q.BitLen()
+	Plen := priv.P.BitLen()
+	Qlen := priv.Q.BitLen()
+
+	n := Qlen
 	if priv.Q.Sign() <= 0 || priv.P.Sign() <= 0 || priv.G.Sign() <= 0 || priv.X.Sign() <= 0 || n&7 != 0 {
 		err = ErrInvalidPublicKey
 		return
@@ -206,7 +209,7 @@ func Sign(rand io.Reader, priv *PrivateKey, hash []byte) (r, s *big.Int, err err
 
 	var attempts int
 	for attempts = 10; attempts > 0; attempts-- {
-		k := new(big.Int)
+		k := new(big.Int).SetBitCap(Qlen)
 		buf := make([]byte, n)
 		for {
 			_, err = io.ReadFull(rand, buf)
@@ -225,7 +228,8 @@ func Sign(rand io.Reader, priv *PrivateKey, hash []byte) (r, s *big.Int, err err
 
 		kInv := fermatInverse(k, priv.Q)
 
-		r = new(big.Int).Exp(priv.G, k, priv.P)
+		r = new(big.Int).SetBitCap(Plen)
+		r.Exp(priv.G, k, priv.P)
 		r.Mod(r, priv.Q)
 
 		if r.Sign() == 0 {
@@ -234,7 +238,8 @@ func Sign(rand io.Reader, priv *PrivateKey, hash []byte) (r, s *big.Int, err err
 
 		z := k.SetBytes(hash)
 
-		s = new(big.Int).Mul(priv.X, r)
+		s = new(big.Int).SetBitCap(Qlen*2)
+		s.Mul(priv.X, r)
 		s.Add(s, z)
 		s.Mod(s, priv.Q)
 		s.Mul(s, kInv)
