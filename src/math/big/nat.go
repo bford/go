@@ -34,6 +34,21 @@ var (
 	natTen = nat{10}
 )
 
+// zeroW returns 1 if w is zero and 0 otherwise, in constant time
+func zeroW(w Word) Word {
+	w = (w >> _W2) | (w & _M2)
+	return (w - 1) >> (_W - 1)
+}
+
+// return 1 if z is zero and 0 otherwise, in constant time
+func (z nat) zero() Word {
+	var nz Word
+	for _, zi := range z {
+		nz |= zi
+	}
+	return zeroW(nz)
+}
+
 func (z nat) clear() {
 	for i := range z {
 		z[i] = 0
@@ -46,6 +61,11 @@ func (z nat) norm() nat {
 		i--
 	}
 	return z[0:i]
+}
+
+func (z nat) normalized() bool {
+	i := len(z)
+	return i == 0 || z[i-1] != 0
 }
 
 func (z nat) make(n int) nat {
@@ -119,22 +139,27 @@ func (z nat) usub(x, y nat) nat {
 	m := len(x)
 	n := len(y)
 
+	var c Word
 	switch {
 	case m < n:
-		return z.usub(y, x)
+		// might not be underflow if y is unnormalized
+		// XXX create test for this case
+		z = z.make(m)
+		c = subVV(z[0:m], x, y)
+		c |= 1 ^ y[m:].zero()
 	case m == 0:
 		// n == 0 because m >= n; result is 0
 		return z[:0]
 	case n == 0:
 		// result is x
 		return z.set(x)
-	}
-	// m > 0
-
-	z = z.make(m)
-	c := subVV(z[0:n], x, y)
-	if m > n {
+	case m > n:
+		z = z.make(m)
+		c = subVV(z[0:n], x, y)
 		c = subVW(z[n:], x[n:], c)
+	default: // m == n
+		z = z.make(m)
+		c = subVV(z[0:m], x, y)
 	}
 	if c != 0 {
 		panic("underflow")
@@ -145,12 +170,6 @@ func (z nat) usub(x, y nat) nat {
 
 func (z nat) sub(x, y nat) nat {
 	return z.usub(x, y).norm()
-}
-
-// eqzero returns 1 if w is zero and 0 otherwise, in constant time
-func eqzero(w Word) Word {
-	w = (w >> _W2) | (w & _M2)
-	return (w - 1) >> (_W - 1)
 }
 
 func (x nat) cmp(y nat) (r int) {
@@ -170,7 +189,7 @@ func (x nat) cmp(y nat) (r int) {
 	if m > n {
 		lt, ne = cmpVW_g(x[n:], lt, ne)
 	}
-	gt := 1 - (lt | eqzero(ne))
+	gt := 1 - (lt | zeroW(ne))
 
 	return int(gt) - int(lt)
 }
@@ -193,9 +212,7 @@ func (z nat) mulAddWW(x nat, y, r Word) nat {
 func basicMul(z, x, y nat) {
 	z[0 : len(x)+len(y)].clear() // initialize z
 	for i, d := range y {
-		if d != 0 {
-			z[len(x)+i] = addMulVVW(z[i:i+len(x)], x, d)
-		}
+		z[len(x)+i] = addMulVVW(z[i:i+len(x)], x, d)
 	}
 }
 

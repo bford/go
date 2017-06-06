@@ -11,6 +11,39 @@ import (
 	"testing"
 )
 
+var subTests = []struct {
+	x, y nat
+	z    nat
+}{
+	{nil, nil, nil},
+	{nil, nat(nil), nil},
+	{nat(nil), nil, nil},
+	{nat(nil), nat(nil), nil},
+	{nat{0}, nat{0}, nil},
+	{nat{1}, nat{0}, nat{1}},
+	{nat{1}, nat{1}, nat{0}},
+	{nat{1, 0}, nat{0}, nat{1}},	// x unnormalized
+	{nat{1, 0}, nat{1}, nat{0}},
+	{nat{1}, nat{0, 0}, nat{1}},	// y unnormalized
+	{nat{1}, nat{1, 0}, nat{0}},
+	{nat{1, 0}, nat{0, 0}, nat{1}},	// x, y unnormalized
+	{nat{1, 0}, nat{1, 0}, nat{0}},
+	{nat{0, _M}, nat{0}, nat{0, _M}},
+	{nat{0, _M}, nat{0, _M}, nat{0}},
+	{nat{1, _M}, nat{0, _M}, nat{1}},
+}
+
+func TestSub(t *testing.T) {
+	// XX should ideally test underflow conditions as well
+	var z nat
+	for i, a := range subTests {
+		z = z.sub(a.x, a.y)
+		if z.cmp(a.z) != 0 {
+			t.Errorf("#%d got z = %v; want %v", i, z, a.z)
+		}
+	}
+}
+
 var cmpTests = []struct {
 	x, y nat
 	r    int
