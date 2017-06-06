@@ -224,7 +224,7 @@ func (z nat) scan(r io.ByteScanner, base int, fracOk bool) (res nat, b, count in
 	if i > 0 {
 		z = z.mulAddWW(z, pow(b1, i), di)
 	}
-	res = z.norm()
+	res = z.norm(0)
 
 	// adjust for fraction, if any
 	if dp >= 0 {

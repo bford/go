@@ -71,10 +71,22 @@ func (z nat) sel(x, y nat, v Word) {
 	}
 }
 
-func (z nat) norm() nat {
+// normalize z to exactly cap words, or to the minimum number if cap == 0.
+// z must already be at least cap words long.
+func (z nat) norm(cap int) nat {
 	i := len(z)
-	for i > 0 && z[i-1] == 0 {
-		i--
+	switch {
+	case cap == 0:	// normalize for variable-time operation
+		for i > 0 && z[i-1] == 0 {
+			i--
+		}
+	case i > cap:	// normalize for constant-time operation
+		if z[cap:].zero() == 0 {
+			panic("constant-time result too large")
+		}
+		i = cap
+	case i < cap:
+		panic("constant-time result too small")
 	}
 	return z[0:i]
 }
@@ -148,7 +160,7 @@ func (z nat) uadd(x, y nat) nat {
 }
 
 func (z nat) add(x, y nat) nat {
-	return z.uadd(x, y).norm()
+	return z.uadd(x, y).norm(0)
 }
 
 func (z nat) usub(x, y nat) nat {
@@ -185,7 +197,7 @@ func (z nat) usub(x, y nat) nat {
 }
 
 func (z nat) sub(x, y nat) nat {
-	return z.usub(x, y).norm()
+	return z.usub(x, y).norm(0)
 }
 
 func (x nat) cmp(y nat) (r int) {
@@ -220,7 +232,7 @@ func (z nat) mulAddWW(x nat, y, r Word) nat {
 	z = z.make(m + 1)
 	z[m] = mulAddVWW(z[0:m], x, y, r)
 
-	return z.norm()
+	return z.norm(0)
 }
 
 // basicMul multiplies x and y and leaves the result in z.
@@ -519,7 +531,7 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 
 		// add x0*y1*b
 		if vartime {
-			x0 = x0.norm()
+			x0 = x0.norm(0)
 		}
 		y1 := y[k:]       // y1 is normalized because y is
 		t = t.mul(x0, y1) // update t so we don't lose t's underlying array
@@ -527,7 +539,7 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 
 		// add xi*y0<<i, xi*y1*b<<(i+k)
 		if vartime {
-			y0 = y0.norm()
+			y0 = y0.norm(0)
 		}
 		for i := k; i < len(x); i += k {
 			xi := x[i:]
@@ -535,7 +547,7 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 				xi = xi[:k]
 			}
 			if vartime {
-				xi = xi.norm()
+				xi = xi.norm(0)
 			}
 			t = t.mul(xi, y0)
 			addAt(z, t, i, vartime)
@@ -548,7 +560,7 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 }
 
 func (z nat) mul(x, y nat) nat {
-	return z.umul(x, y, defaultVarTime).norm()
+	return z.umul(x, y, defaultVarTime).norm(0)
 }
 
 // mulRange computes the product of all the unsigned integers in the
@@ -585,7 +597,7 @@ func (z nat) divW(x nat, y Word) (q nat, r Word) {
 	// m > 0
 	z = z.make(m)
 	r = divWVW(z, 0, x, y)
-	q = z.norm()
+	q = z.norm(0)
 	return
 }
 
@@ -712,9 +724,9 @@ func (z nat) divLarge(u, uIn, v nat) (q, r nat) {
 	}
 	putNat(qhatvp)
 
-	q = q.norm()
+	q = q.norm(0)
 	shrVU(u, u, shift)
-	r = u.norm()
+	r = u.norm(0)
 
 	return q, r
 }
@@ -756,7 +768,7 @@ func (z nat) shl(x nat, s uint) nat {
 	z[n] = shlVU(z[n-m:n], x, s%_W)
 	z[0 : n-m].clear()
 
-	return z.norm()
+	return z.norm(0)
 }
 
 // z = x >> s
@@ -771,7 +783,7 @@ func (z nat) shr(x nat, s uint) nat {
 	z = z.make(n)
 	shrVU(z, x[m-n:], s%_W)
 
-	return z.norm()
+	return z.norm(0)
 }
 
 func (z nat) setBit(x nat, i uint, b uint) nat {
@@ -787,7 +799,7 @@ func (z nat) setBit(x nat, i uint, b uint) nat {
 			return z
 		}
 		z[j] &^= m
-		return z.norm()
+		return z.norm(0)
 	case 1:
 		if j >= n {
 			z = z.make(j + 1)
@@ -848,7 +860,7 @@ func (z nat) and(x, y nat) nat {
 		z[i] = x[i] & y[i]
 	}
 
-	return z.norm()
+	return z.norm(0)
 }
 
 func (z nat) andNot(x, y nat) nat {
@@ -865,7 +877,7 @@ func (z nat) andNot(x, y nat) nat {
 	}
 	copy(z[n:m], x[n:m])
 
-	return z.norm()
+	return z.norm(0)
 }
 
 func (z nat) or(x, y nat) nat {
@@ -884,7 +896,7 @@ func (z nat) or(x, y nat) nat {
 	}
 	copy(z[n:m], s[n:m])
 
-	return z.norm()
+	return z.norm(0)
 }
 
 func (z nat) xor(x, y nat) nat {
@@ -903,7 +915,7 @@ func (z nat) xor(x, y nat) nat {
 	}
 	copy(z[n:m], s[n:m])
 
-	return z.norm()
+	return z.norm(0)
 }
 
 // greaterThan reports whether (x1<<_W + x2) > (y1<<_W + y2)
@@ -952,7 +964,7 @@ func (z nat) random(rand *rand.Rand, limit nat, n int) nat {
 		}
 	}
 
-	return z.norm()
+	return z.norm(0)
 }
 
 // If m != 0 (i.e., len(m) != 0), expNN sets z to x**y mod m;
@@ -1053,11 +1065,11 @@ func (z nat) uexpNN(x, y, m nat, vartime bool) nat {
 		}
 	}
 
-	return z.norm()
+	return z.norm(0)
 }
 
 func (z nat) expNN(x, y, m nat) nat {
-	return z.uexpNN(x, y, m, defaultVarTime).norm()
+	return z.uexpNN(x, y, m, defaultVarTime).norm(0)
 }
 
 // expNNWindowed calculates x**y mod m using a fixed, 4-bit window.
@@ -1120,7 +1132,7 @@ func (z nat) expNNWindowed(x, y, m nat) nat {
 		}
 	}
 
-	return z.norm()
+	return z.norm(0)
 }
 
 // expNNMontgomery calculates x**y mod m using a fixed, 4-bit window.
@@ -1219,7 +1231,7 @@ func (z nat) expNNMontgomery(x, y, m nat, vartime bool) nat {
 		}
 	}
 
-	return zz.norm()
+	return zz.norm(0)
 }
 
 // bytes writes the value of z into buf using big-endian encoding.
@@ -1264,7 +1276,7 @@ func (z nat) setBytes(buf []byte) nat {
 		z[k] = d
 	}
 
-	return z.norm()
+	return z.norm(0)
 }
 
 // sqrt sets z = ⌊√x⌋

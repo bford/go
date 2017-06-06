@@ -87,7 +87,7 @@ func (x *Int) Bits() []Word {
 // SetBits is intended to support implementation of missing low-level Int
 // functionality outside this package; it should be avoided otherwise.
 func (z *Int) SetBits(abs []Word) *Int {
-	z.abs = nat(abs).norm()
+	z.abs = nat(abs).norm(z.cap)
 	z.neg = false
 	return z
 }
