@@ -87,7 +87,7 @@ func (x *Int) Bits() []Word {
 // SetBits is intended to support implementation of missing low-level Int
 // functionality outside this package; it should be avoided otherwise.
 func (z *Int) SetBits(abs []Word) *Int {
-	z.abs = nat(abs).norm(z.cap)
+	z.abs = nat(abs).cnorm(z.cap)
 	z.neg = false
 	return z
 }
@@ -457,7 +457,7 @@ func (z *Int) Exp(x, y, m *Int) *Int {
 		mWords = m.abs // m.abs may be nil for m == 0
 	}
 
-	z.abs = z.abs.expNN(x.abs, yWords, mWords)
+	z.abs = z.abs.cexpNN(x.abs, yWords, mWords, z.cap)
 	z.neg = len(z.abs) > 0 && x.neg && len(yWords) > 0 && yWords[0]&1 == 1 // 0 has no sign
 	if z.neg && len(mWords) > 0 {
 		// make modulus result positive

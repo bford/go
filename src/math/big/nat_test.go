@@ -238,7 +238,7 @@ func TestMulUnbalanced(t *testing.T) {
 }
 
 func rndNat(n int) nat {
-	return nat(rndV(n)).norm(0)
+	return nat(rndV(n)).norm()
 }
 
 func BenchmarkMul(b *testing.B) {
@@ -456,8 +456,8 @@ func TestMontgomery(t *testing.T) {
 		yi := &Int{abs: y}
 		mi := &Int{abs: m}
 		p := new(Int).Mod(new(Int).Mul(xi, new(Int).Mul(yi, new(Int).ModInverse(new(Int).Lsh(one, uint(len(m))*_W), mi))), mi)
-		if out.cmp(p.abs.norm(0)) != 0 {
-			t.Errorf("#%d: out in table=0x%s, computed=0x%s", i, out.utoa(16), p.abs.norm(0).utoa(16))
+		if out.cmp(p.abs.norm()) != 0 {
+			t.Errorf("#%d: out in table=0x%s, computed=0x%s", i, out.utoa(16), p.abs.norm().utoa(16))
 		}
 
 		// check k0 in table
@@ -470,13 +470,13 @@ func TestMontgomery(t *testing.T) {
 		}
 
 		// check montgomery with correct k0 produces correct output
-		z := nat(nil).montgomery(x, y, m, k0, len(m), nil)
-		z = z.norm(0)
+		z := nat(nil).montgomery(x, y, m, k0, len(m), nil, 0)
+		z = z.norm()
 		if z.cmp(out) != 0 {
 			t.Errorf("#%d: got 0x%s want 0x%s", i, z.utoa(16), out.utoa(16))
 		}
-		z = z.montgomery(x, y, m, k0, len(m), make(nat, len(m)))
-		z = z.norm(0)
+		z = z.montgomery(x, y, m, k0, len(m), make(nat, len(m)), 0)
+		z = z.norm()
 		if z.cmp(out) != 0 {
 			t.Errorf("#%d: got 0x%s want 0x%s", i, z.utoa(16), out.utoa(16))
 		}

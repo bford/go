@@ -47,13 +47,17 @@ func zeroW(w Word) Word {
 	return (w - 1) >> (_W - 1)
 }
 
-// return 1 if z is zero and 0 otherwise, in constant time
-func (z nat) zero() Word {
-	var nz Word
+// return 0 if z is zero and any nonzero value otherwise, in constant time
+func (z nat) nonzero() (nz Word) {
 	for _, zi := range z {
 		nz |= zi
 	}
-	return zeroW(nz)
+	return
+}
+
+// return 1 if z is zero and 0 otherwise, in constant time
+func (z nat) zero() Word {
+	return zeroW(z.nonzero())
 }
 
 func (z nat) clear() {
@@ -73,22 +77,26 @@ func (z nat) sel(x, y nat, v Word) {
 
 // normalize z to exactly cap words, or to the minimum number if cap == 0.
 // z must already be at least cap words long.
-func (z nat) norm(cap int) nat {
+func (z nat) cnorm(zcap int) nat {
 	i := len(z)
 	switch {
-	case cap == 0:	// normalize for variable-time operation
+	case zcap == 0:	// normalize for variable-time operation
 		for i > 0 && z[i-1] == 0 {
 			i--
 		}
-	case i > cap:	// normalize for constant-time operation
-		if z[cap:].zero() == 0 {
+	case i > zcap:	// normalize for constant-time operation
+		if z[zcap:].nonzero() != 0 {
 			panic("constant-time result too large")
 		}
-		i = cap
-	case i < cap:
+		i = zcap
+	case i < zcap:
 		panic("constant-time result too small")
 	}
 	return z[0:i]
+}
+
+func (z nat) norm() nat {
+	return z.cnorm(0)
 }
 
 func (z nat) normalized() bool {
@@ -96,7 +104,10 @@ func (z nat) normalized() bool {
 	return i == 0 || z[i-1] != 0
 }
 
-func (z nat) make(n int) nat {
+func (z nat) cmake(n, zcap int) nat {
+	if n < zcap {	// enforce minimum capacity for constant-time operation
+		n = zcap
+	}
 	if n <= cap(z) {
 		return z[:n] // reuse z
 	}
@@ -106,64 +117,78 @@ func (z nat) make(n int) nat {
 	return make(nat, n, n+e)
 }
 
-func (z nat) setWord(x Word) nat {
-	if x == 0 {
-		return z[:0]
-	}
-	z = z.make(1)
+func (z nat) make(n int) nat {
+	return z.cmake(n, 0)
+}
+
+func (z nat) csetWord(x Word, zcap int) nat {
+	z = z.cmake(1, zcap)
 	z[0] = x
-	return z
+	return z.cnorm(zcap)
+}
+
+func (z nat) setWord(x Word) nat {
+	return z.csetWord(x, 0)
+}
+
+func (z nat) csetUint64(x uint64, zcap int) nat {
+	// single-word value
+	if w := Word(x); uint64(w) == x {
+		return z.csetWord(w, zcap)
+	}
+	// 2-word value
+	z = z.cmake(2, zcap)
+	z[1] = Word(x >> 32)
+	z[0] = Word(x)
+	// (note: the fact that this norm was missing before was a bug...)
+	return z.cnorm(zcap)
 }
 
 func (z nat) setUint64(x uint64) nat {
-	// single-word value
-	if w := Word(x); uint64(w) == x {
-		return z.setWord(w)
-	}
-	// 2-word value
-	z = z.make(2)
-	z[1] = Word(x >> 32)
-	z[0] = Word(x)
-	return z
+	return z.csetUint64(x, 0)
 }
 
-func (z nat) set(x nat) nat {
-	z = z.make(len(x))
+func (z nat) cset(x nat, zcap int) nat {
+	z = z.cmake(len(x), zcap)
 	copy(z, x)
 	return z
 }
 
-func (z nat) uadd(x, y nat) nat {
+func (z nat) set(x nat) nat {
+	return z.cset(x, 0)
+}
+
+func (z nat) cadd(x, y nat, zcap int) nat {
 	m := len(x)
 	n := len(y)
 
 	switch {
 	case m < n:
-		return z.uadd(y, x)
+		return z.cadd(y, x, zcap)
 	case m == 0:
 		// n == 0 because m >= n; result is 0
 		return z[:0]
 	case n == 0:
 		// result is x
-		return z.set(x)
+		return z.cset(x, zcap)
 	}
 	// m > 0
 
-	z = z.make(m + 1)
+	z = z.cmake(m + 1, zcap)
 	c := addVV(z[0:n], x, y)
 	if m > n {
 		c = addVW(z[n:m], x[n:], c)
 	}
 	z[m] = c
 
-	return z
+	return z.cnorm(zcap)
 }
 
 func (z nat) add(x, y nat) nat {
-	return z.uadd(x, y).norm(0)
+	return z.cadd(x, y, 0)
 }
 
-func (z nat) usub(x, y nat) nat {
+func (z nat) csub(x, y nat, zcap int) nat {
 	m := len(x)
 	n := len(y)
 
@@ -172,7 +197,7 @@ func (z nat) usub(x, y nat) nat {
 	case m < n:
 		// might not be underflow if y is unnormalized
 		// XXX create test for this case
-		z = z.make(m)
+		z = z.cmake(m, zcap)
 		c = subVV(z[0:m], x, y)
 		c |= 1 ^ y[m:].zero()
 	case m == 0:
@@ -180,24 +205,24 @@ func (z nat) usub(x, y nat) nat {
 		return z[:0]
 	case n == 0:
 		// result is x
-		return z.set(x)
+		return z.cset(x, zcap)
 	case m > n:
-		z = z.make(m)
+		z = z.cmake(m, zcap)
 		c = subVV(z[0:n], x, y)
 		c = subVW(z[n:], x[n:], c)
 	default: // m == n
-		z = z.make(m)
+		z = z.cmake(m, zcap)
 		c = subVV(z[0:m], x, y)
 	}
 	if c != 0 {
 		panic("underflow")
 	}
 
-	return z
+	return z.cnorm(zcap)
 }
 
 func (z nat) sub(x, y nat) nat {
-	return z.usub(x, y).norm(0)
+	return z.csub(x, y, 0)
 }
 
 func (x nat) cmp(y nat) (r int) {
@@ -222,29 +247,33 @@ func (x nat) cmp(y nat) (r int) {
 	return int(gt) - int(lt)
 }
 
-func (z nat) mulAddWW(x nat, y, r Word) nat {
+func (z nat) cmulAddWW(x nat, y, r Word, zcap int) nat {
 	m := len(x)
 	if m == 0 || y == 0 {
-		return z.setWord(r) // result is r
+		return z.csetWord(r, zcap) // result is r
 	}
 	// m > 0
 
-	z = z.make(m + 1)
+	z = z.cmake(m + 1, zcap)
 	z[m] = mulAddVWW(z[0:m], x, y, r)
 
-	return z.norm(0)
+	return z.cnorm(zcap)
+}
+
+func (z nat) mulAddWW(x nat, y, r Word) nat {
+	return z.cmulAddWW(x, y, r, 0)
 }
 
 // basicMul multiplies x and y and leaves the result in z.
 // The (non-normalized) result is placed in z[0 : len(x) + len(y)].
-func basicMul(z, x, y nat, vartime bool) {
+func basicMul(z, x, y nat, zcap int) {
 	z[0 : len(x)+len(y)].clear() // initialize z
 	for i, d := range y {
 		// Optimize multiplies of zero words only if vartime allowed.
-		// Assumes compiled code branches on !vartime either before or
+		// Assumes compiled code branches on zcap > 0 either before or
 		// atomically with d != 0: does Go guarantee standard
 		// evaluation order for || or is there a way to force it?
-		if !vartime || d != 0 {
+		if zcap > 0 || d != 0 {
 			z[len(x)+i] = addMulVVW(z[i:i+len(x)], x, d)
 		}
 	}
@@ -260,7 +289,7 @@ func basicMul(z, x, y nat, vartime bool) {
 // x and y are required to satisfy 0 <= z < 2**(n*_W) and then the result
 // z is guaranteed to satisfy 0 <= z < 2**(n*_W), but it may not be < m.
 // For constant-time operation, zt must be a temporary nat the size of z.
-func (z nat) montgomery(x, y, m nat, k Word, n int, zt nat) nat {
+func (z nat) montgomery(x, y, m nat, k Word, n int, zt nat, zcap int) nat {
 	// This code assumes x, y, m are all the same length, n.
 	// (required by addMulVVW and the for loop).
 	// It also assumes that x, y are already reduced mod m,
@@ -268,7 +297,7 @@ func (z nat) montgomery(x, y, m nat, k Word, n int, zt nat) nat {
 	if len(x) != n || len(y) != n || len(m) != n {
 		panic("math/big: mismatched montgomery number lengths")
 	}
-	z = z.make(n)
+	z = z.cmake(n, zcap)
 	z.clear()
 	var c Word
 	for i := 0; i < n; i++ {
@@ -297,15 +326,15 @@ func (z nat) montgomery(x, y, m nat, k Word, n int, zt nat) nat {
 
 // Fast version of z[0:n+n>>1].add(z[0:n+n>>1], x[0:n]) w/o bounds checks.
 // Factored out for readability - do not use outside karatsuba.
-func karatsubaAdd(z, x nat, n int, vartime bool) {
-	if c := addVV(z[0:n], z, x); !vartime || c != 0 {
+func karatsubaAdd(z, x nat, n int, zcap int) {
+	if c := addVV(z[0:n], z, x); zcap > 0 || c != 0 {
 		addVW(z[n:n+n>>1], z[n:], c)
 	}
 }
 
 // Like karatsubaAdd, but does subtract.
-func karatsubaSub(z, x nat, n int, vartime bool) {
-	if c := subVV(z[0:n], z, x); !vartime || c != 0 {
+func karatsubaSub(z, x nat, n int, zcap int) {
+	if c := subVV(z[0:n], z, x); zcap > 0 || c != 0 {
 		subVW(z[n:n+n>>1], z[n:], c)
 	}
 }
@@ -319,14 +348,14 @@ var karatsubaThreshold int = 40 // computed by calibrate.go
 // Both x and y must have the same length n and n must be a
 // power of 2. The result vector z must have len(z) >= 6*n.
 // The (non-normalized) result is placed in z[0 : 2*n].
-func karatsuba(z, x, y nat, vartime bool) {
+func karatsuba(z, x, y nat, zcap int) {
 	n := len(y)
 
 	// Switch to basic multiplication if numbers are odd or small.
 	// (n is always even if karatsubaThreshold is even, but be
 	// conservative)
 	if n&1 != 0 || n < karatsubaThreshold || n < 2 {
-		basicMul(z, x, y, vartime)
+		basicMul(z, x, y, zcap)
 		return
 	}
 	// n&1 == 0 && n >= karatsubaThreshold && n >= 2
@@ -369,14 +398,14 @@ func karatsuba(z, x, y nat, vartime bool) {
 	// caller's z.
 
 	// compute z0 and z2 with the result "in place" in z
-	karatsuba(z, x0, y0, vartime)     // z0 = x0*y0
-	karatsuba(z[n:], x1, y1, vartime) // z2 = x1*y1
+	karatsuba(z, x0, y0, zcap)     // z0 = x0*y0
+	karatsuba(z[n:], x1, y1, zcap) // z2 = x1*y1
 
 	// compute xd (or the negative value if underflow occurs)
 	neg := Word(0) // whether product xd*yd is negative
 	xd := z[2*n : 2*n+n2]
 	c := subVV(xd, x1, x0)	// x1-x0
-	if !vartime {
+	if zcap > 0 {	// constant-time operation
 		xt := z[3*n : 3*n+n2]	// temporary for selection
 		subVV(xt, x0, x1) // x0-x1
 		xd.sel(xd, xt, c)
@@ -388,7 +417,7 @@ func karatsuba(z, x, y nat, vartime bool) {
 	// compute yd (or the negative value if underflow occurs)
 	yd := z[2*n+n2 : 3*n]
 	c = subVV(yd, y0, y1)	// y0-y1
-	if !vartime {
+	if zcap > 0 {	// constant-time operation
 		yt := z[3*n : 3*n+n2]
 		subVV(yt, y1, y0) // y1-y0
 		yd.sel(yd, yt, c)
@@ -400,7 +429,7 @@ func karatsuba(z, x, y nat, vartime bool) {
 	// p = (x1-x0)*(y0-y1) == x1*y0 - x1*y1 - x0*y0 + x0*y1 for s > 0
 	// p = (x0-x1)*(y0-y1) == x0*y0 - x0*y1 - x1*y0 + x1*y1 for s < 0
 	p := z[n*3:]
-	karatsuba(p, xd, yd, vartime)
+	karatsuba(p, xd, yd, zcap)
 
 	// save original z2:z0
 	// (ok to use upper half of z since we're done recursing)
@@ -416,17 +445,17 @@ func karatsuba(z, x, y nat, vartime bool) {
 	//   +    [  p  ]
 	//
 	zn2 := z[n2:n*2]
-	karatsubaAdd(zn2, r, n, vartime)
-	karatsubaAdd(zn2, r[n:], n, vartime)
-	if !vartime {
+	karatsubaAdd(zn2, r, n, zcap)
+	karatsubaAdd(zn2, r[n:], n, zcap)
+	if zcap > 0 {	// constant-time operation
 		copy(r, zn2)	// reuse r again as a temporary for selection
-		karatsubaAdd(zn2, p, n, vartime)
-		karatsubaSub(r, p, n, vartime)
+		karatsubaAdd(zn2, p, n, zcap)
+		karatsubaSub(r, p, n, zcap)
 		zn2.sel(zn2, r, neg)
 	} else if neg == 0 {
-		karatsubaAdd(zn2, p, n, vartime)
+		karatsubaAdd(zn2, p, n, zcap)
 	} else {
-		karatsubaSub(zn2, p, n, vartime)
+		karatsubaSub(zn2, p, n, zcap)
 	}
 }
 
@@ -438,9 +467,9 @@ func alias(x, y nat) bool {
 // addAt implements z += x<<(_W*i); z must be long enough.
 // (we don't use nat.add because we need z to stay the same
 // slice, and we don't need to normalize z after each addition)
-func addAt(z, x nat, i int, vartime bool) {
+func addAt(z, x nat, i int, zcap int) {
 	if n := len(x); n > 0 {
-		if c := addVV(z[i:i+n], z[i:], x); !vartime || c != 0 {
+		if c := addVV(z[i:i+n], z[i:], x); zcap > 0 || c != 0 {
 			j := i + n
 			if j < len(z) {
 				addVW(z[j:], z[j:], c)
@@ -469,17 +498,17 @@ func karatsubaLen(n int) int {
 	return n << i
 }
 
-func (z nat) umul(x, y nat, vartime bool) nat {
+func (z nat) cmul(x, y nat, zcap int) nat {
 	m := len(x)
 	n := len(y)
 
 	switch {
 	case m < n:
-		return z.umul(y, x, vartime)
+		return z.cmul(y, x, zcap)
 	case m == 0 || n == 0:
-		return z[:0]
+		return z[:0].cnorm(zcap)
 	case n == 1:
-		return z.mulAddWW(x, y[0], 0)
+		return z.cmulAddWW(x, y[0], 0, zcap)
 	}
 	// m >= n > 1
 
@@ -490,9 +519,9 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 
 	// use basic multiplication if the numbers are small
 	if n < karatsubaThreshold {
-		z = z.make(m + n)
-		basicMul(z, x, y, vartime)
-		return z
+		z = z.cmake(m + n, zcap)
+		basicMul(z, x, y, zcap)
+		return z.cnorm(zcap)
 	}
 	// m >= n && n >= karatsubaThreshold && n >= 2
 
@@ -508,8 +537,8 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 	// multiply x0 and y0 via Karatsuba
 	x0 := x[0:k]              // x0 is not normalized
 	y0 := y[0:k]              // y0 is not normalized
-	z = z.make(max(6*k, m+n)) // enough space for karatsuba of x0*y0 and full result of x*y
-	karatsuba(z, x0, y0, vartime)
+	z = z.cmake(max(6*k, m+n), zcap) // enough space for karatsuba of x0*y0 and full result of x*y
+	karatsuba(z, x0, y0, zcap)
 	z = z[0 : m+n]  // z has final length but may be incomplete
 	z[2*k:].clear() // upper portion of z is garbage (and 2*k <= m+n since k <= n <= m)
 
@@ -530,37 +559,37 @@ func (z nat) umul(x, y nat, vartime bool) nat {
 		var t nat
 
 		// add x0*y1*b
-		if vartime {
-			x0 = x0.norm(0)
+		if zcap == 0 {
+			x0 = x0.norm()
 		}
 		y1 := y[k:]       // y1 is normalized because y is
 		t = t.mul(x0, y1) // update t so we don't lose t's underlying array
-		addAt(z, t, k, vartime)
+		addAt(z, t, k, zcap)
 
 		// add xi*y0<<i, xi*y1*b<<(i+k)
-		if vartime {
-			y0 = y0.norm(0)
+		if zcap == 0 {
+			y0 = y0.norm()
 		}
 		for i := k; i < len(x); i += k {
 			xi := x[i:]
 			if len(xi) > k {
 				xi = xi[:k]
 			}
-			if vartime {
-				xi = xi.norm(0)
+			if zcap == 0 {
+				xi = xi.norm()
 			}
 			t = t.mul(xi, y0)
-			addAt(z, t, i, vartime)
+			addAt(z, t, i, zcap)
 			t = t.mul(xi, y1)
-			addAt(z, t, i+k, vartime)
+			addAt(z, t, i+k, zcap)
 		}
 	}
 
-	return z
+	return z.cnorm(zcap)
 }
 
 func (z nat) mul(x, y nat) nat {
-	return z.umul(x, y, defaultVarTime).norm(0)
+	return z.cmul(x, y, 0)
 }
 
 // mulRange computes the product of all the unsigned integers in the
@@ -575,7 +604,8 @@ func (z nat) mulRange(a, b uint64) nat {
 	case a == b:
 		return z.setUint64(a)
 	case a+1 == b:
-		return z.mul(nat(nil).setUint64(a), nat(nil).setUint64(b))
+		return z.mul(nat(nil).setUint64(a),
+				nat(nil).setUint64(b))
 	}
 	m := (a + b) / 2
 	return z.mul(nat(nil).mulRange(a, m), nat(nil).mulRange(m+1, b))
@@ -597,7 +627,7 @@ func (z nat) divW(x nat, y Word) (q nat, r Word) {
 	// m > 0
 	z = z.make(m)
 	r = divWVW(z, 0, x, y)
-	q = z.norm(0)
+	q = z.norm()
 	return
 }
 
@@ -724,9 +754,9 @@ func (z nat) divLarge(u, uIn, v nat) (q, r nat) {
 	}
 	putNat(qhatvp)
 
-	q = q.norm(0)
+	q = q.norm()
 	shrVU(u, u, shift)
-	r = u.norm(0)
+	r = u.norm()
 
 	return q, r
 }
@@ -768,7 +798,7 @@ func (z nat) shl(x nat, s uint) nat {
 	z[n] = shlVU(z[n-m:n], x, s%_W)
 	z[0 : n-m].clear()
 
-	return z.norm(0)
+	return z.norm()
 }
 
 // z = x >> s
@@ -783,7 +813,7 @@ func (z nat) shr(x nat, s uint) nat {
 	z = z.make(n)
 	shrVU(z, x[m-n:], s%_W)
 
-	return z.norm(0)
+	return z.norm()
 }
 
 func (z nat) setBit(x nat, i uint, b uint) nat {
@@ -799,7 +829,7 @@ func (z nat) setBit(x nat, i uint, b uint) nat {
 			return z
 		}
 		z[j] &^= m
-		return z.norm(0)
+		return z.norm()
 	case 1:
 		if j >= n {
 			z = z.make(j + 1)
@@ -860,7 +890,7 @@ func (z nat) and(x, y nat) nat {
 		z[i] = x[i] & y[i]
 	}
 
-	return z.norm(0)
+	return z.norm()
 }
 
 func (z nat) andNot(x, y nat) nat {
@@ -877,7 +907,7 @@ func (z nat) andNot(x, y nat) nat {
 	}
 	copy(z[n:m], x[n:m])
 
-	return z.norm(0)
+	return z.norm()
 }
 
 func (z nat) or(x, y nat) nat {
@@ -896,7 +926,7 @@ func (z nat) or(x, y nat) nat {
 	}
 	copy(z[n:m], s[n:m])
 
-	return z.norm(0)
+	return z.norm()
 }
 
 func (z nat) xor(x, y nat) nat {
@@ -915,7 +945,7 @@ func (z nat) xor(x, y nat) nat {
 	}
 	copy(z[n:m], s[n:m])
 
-	return z.norm(0)
+	return z.norm()
 }
 
 // greaterThan reports whether (x1<<_W + x2) > (y1<<_W + y2)
@@ -964,12 +994,12 @@ func (z nat) random(rand *rand.Rand, limit nat, n int) nat {
 		}
 	}
 
-	return z.norm(0)
+	return z.norm()
 }
 
 // If m != 0 (i.e., len(m) != 0), expNN sets z to x**y mod m;
 // otherwise it sets z to x**y. The result is the value of z.
-func (z nat) uexpNN(x, y, m nat, vartime bool) nat {
+func (z nat) cexpNN(x, y, m nat, zcap int) nat {
 	if alias(z, x) || alias(z, y) {
 		// We cannot allow in-place modification of x or y.
 		z = nil
@@ -977,13 +1007,13 @@ func (z nat) uexpNN(x, y, m nat, vartime bool) nat {
 
 	// x**y mod 1 == 0
 	if len(m) == 1 && m[0] == 1 {
-		return z.setWord(0)
+		return z.csetWord(0, zcap)
 	}
 	// m == 0 || m > 1
 
 	// x**0 == 1
 	if len(y) == 0 {
-		return z.setWord(1)
+		return z.csetWord(1, zcap)
 	}
 	// y > 0
 
@@ -996,9 +1026,9 @@ func (z nat) uexpNN(x, y, m nat, vartime bool) nat {
 
 	if len(m) != 0 {
 		// We likely end up being as long as the modulus.
-		z = z.make(len(m))
+		z = z.cmake(len(m), zcap)
 	}
-	z = z.set(x)
+	z = z.cset(x, zcap)
 
 	// If the base is non-trivial and the exponent is large, we use
 	// 4-bit, windowed exponentiation. This involves precomputing 14 values
@@ -1007,9 +1037,9 @@ func (z nat) uexpNN(x, y, m nat, vartime bool) nat {
 	// operations. Uses Montgomery method for odd moduli.
 	if x.cmp(natOne) > 0 && len(y) > 1 && len(m) > 0 {
 		if m[0]&1 == 1 {
-			return z.expNNMontgomery(x, y, m, vartime)
+			return z.expNNMontgomery(x, y, m, zcap)
 		}
-		return z.expNNWindowed(x, y, m)
+		return z.expNNWindowed(x, y, m, zcap)
 	}
 
 	v := y[len(y)-1] // v > 0 because y is normalized and y > 0
@@ -1065,15 +1095,15 @@ func (z nat) uexpNN(x, y, m nat, vartime bool) nat {
 		}
 	}
 
-	return z.norm(0)
+	return z.cnorm(zcap)
 }
 
 func (z nat) expNN(x, y, m nat) nat {
-	return z.uexpNN(x, y, m, defaultVarTime).norm(0)
+	return z.cexpNN(x, y, m, 0)
 }
 
 // expNNWindowed calculates x**y mod m using a fixed, 4-bit window.
-func (z nat) expNNWindowed(x, y, m nat) nat {
+func (z nat) expNNWindowed(x, y, m nat, zcap int) nat {
 	// zz and r are used to avoid allocating in mul and div as otherwise
 	// the arguments would alias.
 	var zz, r nat
@@ -1093,7 +1123,7 @@ func (z nat) expNNWindowed(x, y, m nat) nat {
 		*p1, r = r, *p1
 	}
 
-	z = z.setWord(1)
+	z = z.csetWord(1, zcap)
 
 	for i := len(y) - 1; i >= 0; i-- {
 		yi := y[i]
@@ -1132,12 +1162,12 @@ func (z nat) expNNWindowed(x, y, m nat) nat {
 		}
 	}
 
-	return z.norm(0)
+	return z.cnorm(zcap)
 }
 
 // expNNMontgomery calculates x**y mod m using a fixed, 4-bit window.
 // Uses Montgomery representation.
-func (z nat) expNNMontgomery(x, y, m nat, vartime bool) nat {
+func (z nat) expNNMontgomery(x, y, m nat, zcap int) nat {
 	numWords := len(m)
 
 	// We want the lengths of x and m to be equal.
@@ -1164,11 +1194,11 @@ func (z nat) expNNMontgomery(x, y, m nat, vartime bool) nat {
 	k0 = -k0
 
 	// RR = 2**(2*_W*len(m)) mod m
-	RR := nat(nil).setWord(1)
+	RR := nat(nil).csetWord(1, zcap)
 	zz := nat(nil).shl(RR, uint(2*numWords*_W))
 	_, RR = RR.div(RR, zz, m)
 	if len(RR) < numWords {
-		zz = zz.make(numWords)
+		zz = zz.cmake(numWords, zcap)
 		copy(zz, RR)
 		RR = zz
 	}
@@ -1178,42 +1208,42 @@ func (z nat) expNNMontgomery(x, y, m nat, vartime bool) nat {
 
 	// for constant-time operation we'll need a temporary to select from
 	zt := nat(nil)
-	if !vartime {
+	if zcap > 0 {
 		zt = make(nat, numWords)
 	}
 
 	const n = 4
 	// powers[i] contains x^i
 	var powers [1 << n]nat
-	powers[0] = powers[0].montgomery(one, RR, m, k0, numWords, zt)
-	powers[1] = powers[1].montgomery(x, RR, m, k0, numWords, zt)
+	powers[0] = powers[0].montgomery(one, RR, m, k0, numWords, zt, zcap)
+	powers[1] = powers[1].montgomery(x, RR, m, k0, numWords, zt, zcap)
 	for i := 2; i < 1<<n; i++ {
-		powers[i] = powers[i].montgomery(powers[i-1], powers[1], m, k0, numWords, zt)
+		powers[i] = powers[i].montgomery(powers[i-1], powers[1], m, k0, numWords, zt, zcap)
 	}
 
 	// initialize z = 1 (Montgomery 1)
-	z = z.make(numWords)
+	z = z.cmake(numWords, zcap)
 	copy(z, powers[0])
 
-	zz = zz.make(numWords)
+	zz = zz.cmake(numWords, zcap)
 
 	// same windowed exponent, but with Montgomery multiplications
 	for i := len(y) - 1; i >= 0; i-- {
 		yi := y[i]
 		for j := 0; j < _W; j += n {
 			if i != len(y)-1 || j != 0 {
-				zz = zz.montgomery(z, z, m, k0, numWords, zt)
-				z = z.montgomery(zz, zz, m, k0, numWords, zt)
-				zz = zz.montgomery(z, z, m, k0, numWords, zt)
-				z = z.montgomery(zz, zz, m, k0, numWords, zt)
+				zz = zz.montgomery(z, z, m, k0, numWords, zt, zcap)
+				z = z.montgomery(zz, zz, m, k0, numWords, zt, zcap)
+				zz = zz.montgomery(z, z, m, k0, numWords, zt, zcap)
+				z = z.montgomery(zz, zz, m, k0, numWords, zt, zcap)
 			}
-			zz = zz.montgomery(z, powers[yi>>(_W-n)], m, k0, numWords, zt)
+			zz = zz.montgomery(z, powers[yi>>(_W-n)], m, k0, numWords, zt, zcap)
 			z, zz = zz, z
 			yi <<= n
 		}
 	}
 	// convert to regular number
-	zz = zz.montgomery(z, one, m, k0, numWords, zt)
+	zz = zz.montgomery(z, one, m, k0, numWords, zt, zcap)
 
 	// One last reduction, just in case.
 	// See golang.org/issue/13907.
@@ -1231,7 +1261,7 @@ func (z nat) expNNMontgomery(x, y, m nat, vartime bool) nat {
 		}
 	}
 
-	return zz.norm(0)
+	return zz.cnorm(zcap)
 }
 
 // bytes writes the value of z into buf using big-endian encoding.
@@ -1276,7 +1306,7 @@ func (z nat) setBytes(buf []byte) nat {
 		z[k] = d
 	}
 
-	return z.norm(0)
+	return z.norm()
 }
 
 // sqrt sets z = ⌊√x⌋

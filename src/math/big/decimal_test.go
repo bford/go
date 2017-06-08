@@ -46,7 +46,7 @@ func TestDecimalInit(t *testing.T) {
 		{1953125, 9, "1000000000"},
 	} {
 		var d decimal
-		d.init(nat{test.x}.norm(0), test.shift)
+		d.init(nat{test.x}.norm(), test.shift)
 		if got := d.String(); got != test.want {
 			t.Errorf("%d << %d == %s; want %s", test.x, test.shift, got, test.want)
 		}
