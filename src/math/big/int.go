@@ -30,11 +30,13 @@ var intOne = &Int{false, natOne, 0}
 //	+1 if x >  0
 //
 func (x *Int) Sign() int {
-	if len(x.abs) == 0 {
+	switch {
+	case len(x.abs) == 0:
 		return 0
-	}
-	if x.neg {
+	case x.neg:
 		return -1
+	case x.cap != 0 || !x.abs.normalized():
+		return int(1 - x.abs.czero())
 	}
 	return 1
 }
@@ -46,14 +48,14 @@ func (z *Int) SetInt64(x int64) *Int {
 		neg = true
 		x = -x
 	}
-	z.abs = z.abs.setUint64(uint64(x))
+	z.abs = z.abs.csetUint64(uint64(x), z.cap)
 	z.neg = neg
 	return z
 }
 
 // SetUint64 sets z to x and returns z.
 func (z *Int) SetUint64(x uint64) *Int {
-	z.abs = z.abs.setUint64(x)
+	z.abs = z.abs.csetUint64(x, z.cap)
 	z.neg = false
 	return z
 }
@@ -154,7 +156,7 @@ func (z *Int) Mul(x, y *Int) *Int {
 	// x * (-y) == -(x * y)
 	// (-x) * y == -(x * y)
 	// (-x) * (-y) == x * y
-	z.abs = z.abs.mul(x.abs, y.abs)
+	z.abs = z.abs.cmul(x.abs, y.abs, z.cap)
 	z.neg = len(z.abs) > 0 && x.neg != y.neg // 0 has no sign
 	return z
 }
@@ -400,7 +402,7 @@ func (z *Int) SetString(s string, base int) (*Int, bool) {
 // SetBytes interprets buf as the bytes of a big-endian unsigned
 // integer, sets z to that value, and returns z.
 func (z *Int) SetBytes(buf []byte) *Int {
-	z.abs = z.abs.setBytes(buf)
+	z.abs = z.abs.csetBytes(buf, z.cap)
 	z.neg = false
 	return z
 }
@@ -429,8 +431,27 @@ func (x *Int) BitCap() int {
 // In constant-time operation, the caller is responsible for ensuring that
 // results actually computed fit within the specified bit capacity.
 // Operations producing too-large results may (but might not always) panic.
-// Not all big.Int methods have constant-time implementations;
-// those that do are explicitly documented as such.
+//
+// Only some big.Int operations have constant-time implementations,
+// and those operations currently guarantee constant-time operation
+// ONLY when all operands and results are non-negative (natural numbers).
+// The operations that currently support constant-time operation are:
+//
+//	Sign (for testing x == 0 versus x > 0)
+//	Set
+//	Add
+//	Sub
+//	Mul
+//	Exp
+//	Int64
+//	SetInt64
+//	Uint64
+//	SetUint64
+//	Bits
+//	SetBits
+// XXX Bytes
+//	SetBytes
+// 
 func (x *Int) SetBitCap(cap int) *Int {
 	if cap < 0 {
 		panic("negative cap")

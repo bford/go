@@ -41,8 +41,8 @@ var (
 const defaultVarTime = true
 
 
-// zeroW returns 1 if w is zero and 0 otherwise, in constant time
-func zeroW(w Word) Word {
+// czero returns 1 if w is zero and 0 otherwise, in constant time
+func czero(w Word) Word {
 	w = (w >> _W2) | (w & _M2)
 	return (w - 1) >> (_W - 1)
 }
@@ -56,8 +56,8 @@ func (z nat) nonzero() (nz Word) {
 }
 
 // return 1 if z is zero and 0 otherwise, in constant time
-func (z nat) zero() Word {
-	return zeroW(z.nonzero())
+func (z nat) czero() Word {
+	return czero(z.nonzero())
 }
 
 func (z nat) clear() {
@@ -105,16 +105,17 @@ func (z nat) normalized() bool {
 }
 
 func (z nat) cmake(n, zcap int) nat {
-	if n < zcap {	// enforce minimum capacity for constant-time operation
-		n = zcap
-	}
-	if n <= cap(z) {
-		return z[:n] // reuse z
+	l := max(n, zcap) // enforce capacity for constant-time operation
+	if l <= cap(z) {
+		if l > n {	// make sure zcap padding is cleared out
+			z[n:l].clear()
+		}
+		return z[:l] // reuse z
 	}
 	// Choosing a good value for e has significant performance impact
 	// because it increases the chance that a value can be reused.
 	const e = 4 // extra capacity
-	return make(nat, n, n+e)
+	return make(nat, l, l+e)
 }
 
 func (z nat) make(n int) nat {
@@ -199,7 +200,7 @@ func (z nat) csub(x, y nat, zcap int) nat {
 		// XXX create test for this case
 		z = z.cmake(m, zcap)
 		c = subVV(z[0:m], x, y)
-		c |= 1 ^ y[m:].zero()
+		c |= 1 ^ y[m:].czero()
 	case m == 0:
 		// n == 0 because m >= n; result is 0
 		return z[:0]
@@ -242,7 +243,7 @@ func (x nat) cmp(y nat) (r int) {
 	if m > n {
 		lt, ne = cmpVW_g(x[n:], lt, ne)
 	}
-	gt := 1 - (lt | zeroW(ne))
+	gt := 1 - (lt | czero(ne))
 
 	return int(gt) - int(lt)
 }
@@ -1287,8 +1288,8 @@ func (z nat) bytes(buf []byte) (i int) {
 
 // setBytes interprets buf as the bytes of a big-endian unsigned
 // integer, sets z to that value, and returns z.
-func (z nat) setBytes(buf []byte) nat {
-	z = z.make((len(buf) + _S - 1) / _S)
+func (z nat) csetBytes(buf []byte, zcap int) nat {
+	z = z.cmake((len(buf) + _S - 1) / _S, zcap)
 
 	k := 0
 	s := uint(0)
@@ -1306,7 +1307,11 @@ func (z nat) setBytes(buf []byte) nat {
 		z[k] = d
 	}
 
-	return z.norm()
+	return z.cnorm(zcap)
+}
+
+func (z nat) setBytes(buf []byte) nat {
+	return z.csetBytes(buf, 0)
 }
 
 // sqrt sets z = ⌊√x⌋
