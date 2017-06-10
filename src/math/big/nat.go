@@ -75,7 +75,8 @@ func (z nat) sel(x, y nat, v Word) {
 }
 
 // normalize z to exactly cap words, or to the minimum number if cap == 0.
-// z must already be at least cap words long.
+// z must already be at least cap words long,
+// which is usually ensured by an earlier call to z.cmake().
 func (z nat) cnorm(zcap int) nat {
 	i := len(z)
 	switch {
@@ -612,11 +613,13 @@ func (z nat) mulRange(a, b uint64) nat {
 }
 
 // q = (x-r)/y, with 0 <= r < y
-func (z nat) divW(x nat, y Word) (q nat, r Word) {
+func (z nat) cdivW(x nat, y Word, zcap int) (q nat, r Word) {
 	m := len(x)
 	switch {
 	case y == 0:
 		panic("division by zero")
+	case zcap > 0:
+		break // disable variable-time optimizations
 	case y == 1:
 		q = z.set(x) // result is x
 		return
@@ -625,32 +628,44 @@ func (z nat) divW(x nat, y Word) (q nat, r Word) {
 		return
 	}
 	// m > 0
-	z = z.make(m)
+	z = z.cmake(m, zcap)
 	r = divWVW(z, 0, x, y)
-	q = z.norm()
+	q = z.cnorm(zcap)
 	return
 }
 
-func (z nat) div(z2, u, v nat) (q, r nat) {
+func (z nat) divW(x nat, y Word) (q nat, r Word) {
+	return z.cdivW(x, y, 0)
+}
+
+// Divide u by v, returning quotient q reusing storage z if possible,
+// and remainder r reusing storage z2 if possible.
+// When zcap > 0, runs in constant-time in dividend (u) but not divisor (v).
+func (z nat) cdiv(z2, u, v nat, zcap int) (q, r nat) {
+	v = v.norm() // divisor must be normalized
 	if len(v) == 0 {
 		panic("division by zero")
 	}
 
-	if u.cmp(v) < 0 {
+	if len(u) < len(v) || (zcap == 0 && u.cmp(v) < 0) {
 		q = z[:0]
-		r = z2.set(u)
+		r = z2.cset(u, zcap)
 		return
 	}
 
 	if len(v) == 1 {
 		var r2 Word
-		q, r2 = z.divW(u, v[0])
-		r = z2.setWord(r2)
+		q, r2 = z.cdivW(u, v[0], zcap)
+		r = z2.csetWord(r2, zcap)
 		return
 	}
 
-	q, r = z.divLarge(z2, u, v)
+	q, r = z.cdivLarge(z2, u, v, zcap)
 	return
+}
+
+func (z nat) div(z2, u, v nat) (q, r nat) {
+	return z.cdiv(z2, u, v, 0)
 }
 
 // getNat returns a *nat of len n. The contents may not be zero.
@@ -679,7 +694,7 @@ var natPool sync.Pool
 // Preconditions:
 //    len(v) >= 2
 //    len(uIn) >= len(v)
-func (z nat) divLarge(u, uIn, v nat) (q, r nat) {
+func (z nat) cdivLarge(u, uIn, v nat, zcap int) (q, r nat) {
 	n := len(v)
 	m := len(uIn) - n
 
@@ -725,7 +740,9 @@ func (z nat) divLarge(u, uIn, v nat) (q, r nat) {
 			x1, x2 := mulWW(qhat, vn2)
 			// test if q̂v_{n-2} > br̂ + u_{j+n-2}
 			ujn2 := u[j+n-2]
+			nn := 0
 			for greaterThan(x1, x2, rhat, ujn2) {
+				nn++
 				qhat--
 				prevRhat := rhat
 				rhat += vn1
@@ -734,6 +751,9 @@ func (z nat) divLarge(u, uIn, v nat) (q, r nat) {
 					break
 				}
 				x1, x2 = mulWW(qhat, vn2)
+			}
+			if nn > 2 {
+				println("nn ", nn)
 			}
 		}
 
