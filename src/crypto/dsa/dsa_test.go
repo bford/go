@@ -7,6 +7,7 @@ package dsa
 import (
 	"bytes"
 	"crypto/rand"
+	"io"
 	"math/big"
 	"testing"
 )
@@ -144,18 +145,23 @@ func TestSigningWithDegenerateKeys(t *testing.T) {
 	}
 }
 
+// tiny Q-sized "random" (haha) value for constant/variable-time testing
+var tinyRand = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+
+func benchRand(rbuf []byte) io.Reader {
+	if rbuf != nil { // fake randomness to generate particular key
+		return bytes.NewReader(rbuf)
+	}
+	return rand.Reader
+}
+
 func benchGenerateKey(b *testing.B, rbuf []byte) {
 	var priv PrivateKey
 	priv.Parameters = testPriv.Parameters
 	b.ResetTimer()
 
 	for i := b.N - 1; i >= 0; i-- {
-		r := rand.Reader
-		if rbuf != nil { // fake randomness to generate particular key
-			r = bytes.NewReader(rbuf)
-		}
-
-		if err := GenerateKey(&priv, r); err != nil {
+		if err := GenerateKey(&priv, benchRand(rbuf)); err != nil {
 			b.Errorf("error generating key: %s", err)
 			return
 		}
@@ -167,13 +173,12 @@ func BenchmarkGenerateKey(b *testing.B) {
 }
 
 func BenchmarkGenerateTinyKey(b *testing.B) {
-	rbuf := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
-	benchGenerateKey(b, rbuf[:])
+	benchGenerateKey(b, tinyRand)
 }
 
-func benchSign(b *testing.B, priv *PrivateKey, hashed []byte) {
+func benchSign(b *testing.B, priv *PrivateKey, hashed []byte, rbuf []byte) {
 	for i := b.N - 1; i >= 0; i-- {
-		_, _, err := Sign(rand.Reader, priv, hashed)
+		_, _, err := Sign(benchRand(rbuf), priv, hashed)
 		if err != nil {
 			b.Errorf("error signing: %s", err)
 			return
@@ -197,20 +202,20 @@ func benchVerify(b *testing.B, priv *PrivateKey) {
 	}
 }
 
-func BenchmarkSignTinyKeyTinyMsg(b *testing.B) {
-	benchSign(b, &tinyPriv, []byte{})
+func BenchmarkSign(b *testing.B) {
+	benchSign(b, &testPriv, []byte("the quick brown fox"), nil)
 }
 
-func BenchmarkSignTinyKeyBigMsg(b *testing.B) {
-	benchSign(b, &tinyPriv, []byte("the quick brown fox"))
+func BenchmarkSignTinyKey(b *testing.B) {
+	benchSign(b, &tinyPriv, []byte("the quick brown fox"), nil)
 }
 
-func BenchmarkSignBigKeyTinyMsg(b *testing.B) {
-	benchSign(b, &testPriv, []byte{})
+func BenchmarkSignTinyMsg(b *testing.B) {
+	benchSign(b, &testPriv, []byte{}, nil)
 }
 
-func BenchmarkSignBigKeyBigMsg(b *testing.B) {
-	benchSign(b, &testPriv, []byte("the quick brown fox"))
+func BenchmarkSignTinyRand(b *testing.B) {
+	benchSign(b, &testPriv, []byte("the quick brown fox"), tinyRand)
 }
 
 func BenchmarkVerify(b *testing.B) {

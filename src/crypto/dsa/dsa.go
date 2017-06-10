@@ -54,7 +54,7 @@ const numMRTests = 64
 
 // Set to 1 normally to enable constant-time operation,
 // but may be set to 0 to compare against variable-time operation.
-const constTime = 1
+const constTime = 0
 
 // GenerateParameters puts a random, valid set of DSA parameters into params.
 // This function can take many seconds, even on fast machines.
