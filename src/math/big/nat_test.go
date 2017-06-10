@@ -25,18 +25,18 @@ var addTests = []struct {
 	{0, nat{1}, nat{0}, nat{1}},
 	{0, nat{1}, nat{1}, nat{2}},
 	{3, nat{1}, nat{1}, nat{2, 0, 0}},
-	{0, nat{1, 0}, nat{0}, nat{1}},	// x unnormalized
+	{0, nat{1, 0}, nat{0}, nat{1}}, // x unnormalized
 	{0, nat{1, 0}, nat{1}, nat{2}},
-	{0, nat{1}, nat{0, 0}, nat{1}},	// y unnormalized
+	{0, nat{1}, nat{0, 0}, nat{1}}, // y unnormalized
 	{0, nat{1}, nat{1, 0}, nat{2}},
-	{0, nat{1, 0}, nat{0, 0}, nat{1}},	// x, y unnormalized
+	{0, nat{1, 0}, nat{0, 0}, nat{1}}, // x, y unnormalized
 	{0, nat{1, 0}, nat{1, 0}, nat{2}},
 	{0, nat{0, 1}, nat{1, 0}, nat{1, 1}},
 	{0, nat{0, _M}, nat{0}, nat{0, _M}},
 	{0, nat{1}, nat{_M}, nat{0, 1}},
-	{0, nat{0, _M}, nat{0, _M}, nat{0, _M-1, 1}},
-	{3, nat{0, _M}, nat{0, _M}, nat{0, _M-1, 1}},
-	{4, nat{0, _M}, nat{0, _M}, nat{0, _M-1, 1, 0}},
+	{0, nat{0, _M}, nat{0, _M}, nat{0, _M - 1, 1}},
+	{3, nat{0, _M}, nat{0, _M}, nat{0, _M - 1, 1}},
+	{4, nat{0, _M}, nat{0, _M}, nat{0, _M - 1, 1, 0}},
 	{0, nat{_M, _M}, nat{1}, nat{0, 0, 1}},
 }
 
@@ -62,11 +62,11 @@ var subTests = []struct {
 	{nat{0}, nat{0}, nil},
 	{nat{1}, nat{0}, nat{1}},
 	{nat{1}, nat{1}, nat{0}},
-	{nat{1, 0}, nat{0}, nat{1}},	// x unnormalized
+	{nat{1, 0}, nat{0}, nat{1}}, // x unnormalized
 	{nat{1, 0}, nat{1}, nat{0}},
-	{nat{1}, nat{0, 0}, nat{1}},	// y unnormalized
+	{nat{1}, nat{0, 0}, nat{1}}, // y unnormalized
 	{nat{1}, nat{1, 0}, nat{0}},
-	{nat{1, 0}, nat{0, 0}, nat{1}},	// x, y unnormalized
+	{nat{1, 0}, nat{0, 0}, nat{1}}, // x, y unnormalized
 	{nat{1, 0}, nat{1, 0}, nat{0}},
 	{nat{0, _M}, nat{0}, nat{0, _M}},
 	{nat{0, _M}, nat{0, _M}, nat{0}},
@@ -96,15 +96,15 @@ var cmpTests = []struct {
 	{nat{0}, nat{1}, -1},
 	{nat{1}, nat{0}, 1},
 	{nat{1}, nat{1}, 0},
-	{nat{0, 0}, nat{0}, 0},		// unnormalized x
+	{nat{0, 0}, nat{0}, 0}, // unnormalized x
 	{nat{0, 0}, nat{1}, -1},
 	{nat{1, 0}, nat{0}, 1},
 	{nat{1, 0}, nat{1}, 0},
-	{nat{0}, nat{0, 0}, 0},		// unnormalized y
+	{nat{0}, nat{0, 0}, 0}, // unnormalized y
 	{nat{0}, nat{1, 0}, -1},
 	{nat{1}, nat{0, 0}, 1},
 	{nat{1}, nat{1, 0}, 0},
-	{nat{0, 0}, nat{0, 0}, 0},	// unnormalized x,y
+	{nat{0, 0}, nat{0, 0}, 0}, // unnormalized x,y
 	{nat{0, 0}, nat{1, 0}, -1},
 	{nat{1, 0}, nat{0, 0}, 1},
 	{nat{1, 0}, nat{1, 0}, 0},

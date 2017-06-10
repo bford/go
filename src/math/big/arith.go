@@ -60,13 +60,13 @@ func mulAddWWW_g(x, y, c Word) (z1, z0 Word) {
 	y1 := y >> _W2
 	c0 := c & _M2
 	c1 := c >> _W2
-	w0 := x0 * y0 + c0
+	w0 := x0*y0 + c0
 	t := x1*y0 + w0>>_W2 + c1
 	w1 := t & _M2
 	w2 := t >> _W2
 	w1 += x0 * y1
 	z1 = x1*y1 + w2 + w1>>_W2
-	z0 = x * y + c
+	z0 = x*y + c
 	return
 }
 

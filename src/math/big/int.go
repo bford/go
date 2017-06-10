@@ -451,7 +451,7 @@ func (x *Int) BitCap() int {
 //	SetBits
 // XXX Bytes
 //	SetBytes
-// 
+//
 func (x *Int) SetBitCap(cap int) *Int {
 	if cap < 0 {
 		panic("negative cap")

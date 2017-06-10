@@ -40,7 +40,6 @@ var (
 // but sometimes useful to set to false for testing purposes.
 const defaultVarTime = true
 
-
 // czero returns 1 if w is zero and 0 otherwise, in constant time
 func czero(w Word) Word {
 	w = (w >> _W2) | (w & _M2)
@@ -68,10 +67,10 @@ func (z nat) clear() {
 
 // set z to x if v == 0 and to y if v == 1, in constant time
 func (z nat) sel(x, y nat, v Word) {
-	xmask := v-1
+	xmask := v - 1
 	ymask := ^xmask
 	for i := range z {
-		z[i] = x[i] & xmask | y[i] & ymask
+		z[i] = x[i]&xmask | y[i]&ymask
 	}
 }
 
@@ -80,11 +79,11 @@ func (z nat) sel(x, y nat, v Word) {
 func (z nat) cnorm(zcap int) nat {
 	i := len(z)
 	switch {
-	case zcap == 0:	// normalize for variable-time operation
+	case zcap == 0: // normalize for variable-time operation
 		for i > 0 && z[i-1] == 0 {
 			i--
 		}
-	case i > zcap:	// normalize for constant-time operation
+	case i > zcap: // normalize for constant-time operation
 		if z[zcap:].nonzero() != 0 {
 			panic("constant-time result too large")
 		}
@@ -107,7 +106,7 @@ func (z nat) normalized() bool {
 func (z nat) cmake(n, zcap int) nat {
 	l := max(n, zcap) // enforce capacity for constant-time operation
 	if l <= cap(z) {
-		if l > n {	// make sure zcap padding is cleared out
+		if l > n { // make sure zcap padding is cleared out
 			z[n:l].clear()
 		}
 		return z[:l] // reuse z
@@ -175,7 +174,7 @@ func (z nat) cadd(x, y nat, zcap int) nat {
 	}
 	// m > 0
 
-	z = z.cmake(m + 1, zcap)
+	z = z.cmake(m+1, zcap)
 	c := addVV(z[0:n], x, y)
 	if m > n {
 		c = addVW(z[n:m], x[n:], c)
@@ -255,7 +254,7 @@ func (z nat) cmulAddWW(x nat, y, r Word, zcap int) nat {
 	}
 	// m > 0
 
-	z = z.cmake(m + 1, zcap)
+	z = z.cmake(m+1, zcap)
 	z[m] = mulAddVWW(z[0:m], x, y, r)
 
 	return z.cnorm(zcap)
@@ -314,11 +313,11 @@ func (z nat) montgomery(x, y, m nat, k Word, n int, zt nat, zcap int) nat {
 		c = (c&c2 | (c|c2)&^cx) >> (_W - 1)
 		c |= (cx&c3 | (cx|c3)&^cy) >> (_W - 1)
 	}
-	if zt == nil {	// variable-time operation
+	if zt == nil { // variable-time operation
 		if c != 0 {
 			subVV(z, z, m)
 		}
-	} else {	// constant-time operation
+	} else { // constant-time operation
 		subVV(zt, z, m)
 		z.sel(z, zt, c)
 	}
@@ -405,10 +404,10 @@ func karatsuba(z, x, y nat, zcap int) {
 	// compute xd (or the negative value if underflow occurs)
 	neg := Word(0) // whether product xd*yd is negative
 	xd := z[2*n : 2*n+n2]
-	c := subVV(xd, x1, x0)	// x1-x0
-	if zcap > 0 {	// constant-time operation
-		xt := z[3*n : 3*n+n2]	// temporary for selection
-		subVV(xt, x0, x1) // x0-x1
+	c := subVV(xd, x1, x0) // x1-x0
+	if zcap > 0 {          // constant-time operation
+		xt := z[3*n : 3*n+n2] // temporary for selection
+		subVV(xt, x0, x1)     // x0-x1
 		xd.sel(xd, xt, c)
 	} else if c != 0 { // variable-time operation
 		subVV(xd, x0, x1) // x0-x1
@@ -417,8 +416,8 @@ func karatsuba(z, x, y nat, zcap int) {
 
 	// compute yd (or the negative value if underflow occurs)
 	yd := z[2*n+n2 : 3*n]
-	c = subVV(yd, y0, y1)	// y0-y1
-	if zcap > 0 {	// constant-time operation
+	c = subVV(yd, y0, y1) // y0-y1
+	if zcap > 0 {         // constant-time operation
 		yt := z[3*n : 3*n+n2]
 		subVV(yt, y1, y0) // y1-y0
 		yd.sel(yd, yt, c)
@@ -445,11 +444,11 @@ func karatsuba(z, x, y nat, zcap int) {
 	//   +    [ z2  ]
 	//   +    [  p  ]
 	//
-	zn2 := z[n2:n*2]
+	zn2 := z[n2 : n*2]
 	karatsubaAdd(zn2, r, n, zcap)
 	karatsubaAdd(zn2, r[n:], n, zcap)
-	if zcap > 0 {	// constant-time operation
-		copy(r, zn2)	// reuse r again as a temporary for selection
+	if zcap > 0 { // constant-time operation
+		copy(r, zn2) // reuse r again as a temporary for selection
 		karatsubaAdd(zn2, p, n, zcap)
 		karatsubaSub(r, p, n, zcap)
 		zn2.sel(zn2, r, neg)
@@ -520,7 +519,7 @@ func (z nat) cmul(x, y nat, zcap int) nat {
 
 	// use basic multiplication if the numbers are small
 	if n < karatsubaThreshold {
-		z = z.cmake(m + n, zcap)
+		z = z.cmake(m+n, zcap)
 		basicMul(z, x, y, zcap)
 		return z.cnorm(zcap)
 	}
@@ -536,8 +535,8 @@ func (z nat) cmul(x, y nat, zcap int) nat {
 	// k <= n
 
 	// multiply x0 and y0 via Karatsuba
-	x0 := x[0:k]              // x0 is not normalized
-	y0 := y[0:k]              // y0 is not normalized
+	x0 := x[0:k]                     // x0 is not normalized
+	y0 := y[0:k]                     // y0 is not normalized
 	z = z.cmake(max(6*k, m+n), zcap) // enough space for karatsuba of x0*y0 and full result of x*y
 	karatsuba(z, x0, y0, zcap)
 	z = z[0 : m+n]  // z has final length but may be incomplete
@@ -606,7 +605,7 @@ func (z nat) mulRange(a, b uint64) nat {
 		return z.setUint64(a)
 	case a+1 == b:
 		return z.mul(nat(nil).setUint64(a),
-				nat(nil).setUint64(b))
+			nat(nil).setUint64(b))
 	}
 	m := (a + b) / 2
 	return z.mul(nat(nil).mulRange(a, m), nat(nil).mulRange(m+1, b))
@@ -1289,7 +1288,7 @@ func (z nat) bytes(buf []byte) (i int) {
 // setBytes interprets buf as the bytes of a big-endian unsigned
 // integer, sets z to that value, and returns z.
 func (z nat) csetBytes(buf []byte, zcap int) nat {
-	z = z.cmake((len(buf) + _S - 1) / _S, zcap)
+	z = z.cmake((len(buf)+_S-1)/_S, zcap)
 
 	k := 0
 	s := uint(0)

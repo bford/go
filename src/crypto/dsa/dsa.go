@@ -238,7 +238,7 @@ func Sign(rand io.Reader, priv *PrivateKey, hash []byte) (r, s *big.Int, err err
 
 		z := k.SetBytes(hash)
 
-		s = new(big.Int).SetBitCap(Qlen*2)
+		s = new(big.Int).SetBitCap(Qlen * 2)
 		s.Mul(priv.X, r)
 		s.Add(s, z)
 		s.Mod(s, priv.Q)
