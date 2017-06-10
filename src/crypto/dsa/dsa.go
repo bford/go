@@ -52,6 +52,10 @@ const (
 // pick the largest recommended number from table C.1 of FIPS 186-3.
 const numMRTests = 64
 
+// Set to 1 normally to enable constant-time operation,
+// but may be set to 0 to compare against variable-time operation.
+const constTime = 0
+
 // GenerateParameters puts a random, valid set of DSA parameters into params.
 // This function can take many seconds, even on fast machines.
 func GenerateParameters(params *Parameters, rand io.Reader, sizes ParameterSizes) error {
@@ -153,7 +157,10 @@ func GenerateKey(priv *PrivateKey, rand io.Reader) error {
 		return errors.New("crypto/dsa: parameters not set up before generating key")
 	}
 
-	x := new(big.Int)
+	Plen := priv.P.BitLen()
+	Qlen := priv.Q.BitLen()
+
+	x := new(big.Int).SetBitCap(Qlen)
 	xBytes := make([]byte, priv.Q.BitLen()/8)
 
 	for {
@@ -168,7 +175,7 @@ func GenerateKey(priv *PrivateKey, rand io.Reader) error {
 	}
 
 	priv.X = x
-	priv.Y = new(big.Int)
+	priv.Y = new(big.Int).SetBitCap(Plen)
 	priv.Y.Exp(priv.G, x, priv.P)
 	return nil
 }
@@ -178,9 +185,10 @@ func GenerateKey(priv *PrivateKey, rand io.Reader) error {
 // in math/big.Int.ModInverse) although math/big itself isn't strictly
 // constant-time so it's not perfect.
 func fermatInverse(k, P *big.Int) *big.Int {
+	Plen := P.BitLen()
 	two := big.NewInt(2)
 	pMinus2 := new(big.Int).Sub(P, two)
-	return new(big.Int).Exp(k, pMinus2, P)
+	return new(big.Int).SetBitCap(constTime*Plen).Exp(k, pMinus2, P)
 }
 
 // Sign signs an arbitrary length hash (which should be the result of hashing a
@@ -209,7 +217,7 @@ func Sign(rand io.Reader, priv *PrivateKey, hash []byte) (r, s *big.Int, err err
 
 	var attempts int
 	for attempts = 10; attempts > 0; attempts-- {
-		k := new(big.Int).SetBitCap(Qlen)
+		k := new(big.Int).SetBitCap(constTime * Qlen)
 		buf := make([]byte, n)
 		for {
 			_, err = io.ReadFull(rand, buf)
@@ -228,7 +236,7 @@ func Sign(rand io.Reader, priv *PrivateKey, hash []byte) (r, s *big.Int, err err
 
 		kInv := fermatInverse(k, priv.Q)
 
-		r = new(big.Int).SetBitCap(Plen)
+		r = new(big.Int).SetBitCap(constTime * Plen)
 		r.Exp(priv.G, k, priv.P)
 		r.Mod(r, priv.Q)
 
@@ -238,7 +246,7 @@ func Sign(rand io.Reader, priv *PrivateKey, hash []byte) (r, s *big.Int, err err
 
 		z := k.SetBytes(hash)
 
-		s = new(big.Int).SetBitCap(Qlen * 2)
+		s = new(big.Int).SetBitCap(constTime * Qlen * 2)
 		s.Mul(priv.X, r)
 		s.Add(s, z)
 		s.Mod(s, priv.Q)
