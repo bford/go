@@ -54,7 +54,7 @@ const numMRTests = 64
 
 // Set to 1 normally to enable constant-time operation,
 // but may be set to 0 to compare against variable-time operation.
-const constTime = 0
+const constTime = 1
 
 // GenerateParameters puts a random, valid set of DSA parameters into params.
 // This function can take many seconds, even on fast machines.
@@ -160,7 +160,7 @@ func GenerateKey(priv *PrivateKey, rand io.Reader) error {
 	Plen := priv.P.BitLen()
 	Qlen := priv.Q.BitLen()
 
-	x := new(big.Int).SetBitCap(Qlen)
+	x := new(big.Int).SetBitCap(constTime * Qlen)
 	xBytes := make([]byte, priv.Q.BitLen()/8)
 
 	for {
@@ -175,7 +175,7 @@ func GenerateKey(priv *PrivateKey, rand io.Reader) error {
 	}
 
 	priv.X = x
-	priv.Y = new(big.Int).SetBitCap(Plen)
+	priv.Y = new(big.Int).SetBitCap(constTime * Plen)
 	priv.Y.Exp(priv.G, x, priv.P)
 	return nil
 }

@@ -5,6 +5,7 @@
 package dsa
 
 import (
+	"bytes"
 	"crypto/rand"
 	"math/big"
 	"testing"
@@ -141,6 +142,33 @@ func TestSigningWithDegenerateKeys(t *testing.T) {
 			t.Errorf("#%d: unexpected success", i)
 		}
 	}
+}
+
+func benchGenerateKey(b *testing.B, rbuf []byte) {
+	var priv PrivateKey
+	priv.Parameters = testPriv.Parameters
+	b.ResetTimer()
+
+	for i := b.N - 1; i >= 0; i-- {
+		r := rand.Reader
+		if rbuf != nil { // fake randomness to generate particular key
+			r = bytes.NewReader(rbuf)
+		}
+
+		if err := GenerateKey(&priv, r); err != nil {
+			b.Errorf("error generating key: %s", err)
+			return
+		}
+	}
+}
+
+func BenchmarkGenerateKey(b *testing.B) {
+	benchGenerateKey(b, nil)
+}
+
+func BenchmarkGenerateTinyKey(b *testing.B) {
+	rbuf := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+	benchGenerateKey(b, rbuf[:])
 }
 
 func benchSign(b *testing.B, priv *PrivateKey, hashed []byte) {
