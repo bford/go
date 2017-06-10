@@ -11,6 +11,46 @@ import (
 	"testing"
 )
 
+var addTests = []struct {
+	zcap int
+	x, y nat
+	z    nat
+}{
+	{0, nil, nil, nil},
+	{0, nil, nat(nil), nil},
+	{0, nat(nil), nil, nil},
+	{2, nat(nil), nil, nat{0, 0}},
+	{0, nat(nil), nat(nil), nil},
+	{0, nat{0}, nat{0}, nil},
+	{0, nat{1}, nat{0}, nat{1}},
+	{0, nat{1}, nat{1}, nat{2}},
+	{3, nat{1}, nat{1}, nat{2, 0, 0}},
+	{0, nat{1, 0}, nat{0}, nat{1}},	// x unnormalized
+	{0, nat{1, 0}, nat{1}, nat{2}},
+	{0, nat{1}, nat{0, 0}, nat{1}},	// y unnormalized
+	{0, nat{1}, nat{1, 0}, nat{2}},
+	{0, nat{1, 0}, nat{0, 0}, nat{1}},	// x, y unnormalized
+	{0, nat{1, 0}, nat{1, 0}, nat{2}},
+	{0, nat{0, 1}, nat{1, 0}, nat{1, 1}},
+	{0, nat{0, _M}, nat{0}, nat{0, _M}},
+	{0, nat{1}, nat{_M}, nat{0, 1}},
+	{0, nat{0, _M}, nat{0, _M}, nat{0, _M-1, 1}},
+	{3, nat{0, _M}, nat{0, _M}, nat{0, _M-1, 1}},
+	{4, nat{0, _M}, nat{0, _M}, nat{0, _M-1, 1, 0}},
+	{0, nat{_M, _M}, nat{1}, nat{0, 0, 1}},
+}
+
+func TestAdd(t *testing.T) {
+	// XX should ideally test underflow conditions as well
+	var z nat
+	for i, a := range addTests {
+		z = z.cadd(a.x, a.y, a.zcap)
+		if z.cmp(a.z) != 0 {
+			t.Errorf("#%d got z = %v; want %v", i, z, a.z)
+		}
+	}
+}
+
 var subTests = []struct {
 	x, y nat
 	z    nat
