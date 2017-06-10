@@ -32,20 +32,17 @@ const (
 
 // z1<<_W + z0 = x+y+c, with c == 0 or 1
 func addWW_g(x, y, c Word) (z1, z0 Word) {
-	// Add half-words at a time to compute carries in constant time
-	zl := (x & _M2) + (y & _M2) + c
-	zh := (x >> _W2) + (y >> _W2) + (zl >> _W2)
-	z1 = zh >> _W2
-	z0 = (zh << _W2) + (zl & _M2)
+	z0 = x + y + c
+	// see "Hacker's Delight", section 2-12 (overflow detection)
+	z1 = (x&y | (x|y)&^z0) >> (_W - 1)
 	return
 }
 
 // z1<<_W + z0 = x-y-c, with c == 0 or 1
 func subWW_g(x, y, c Word) (z1, z0 Word) {
-	zl := (x & _M2) - (y & _M2) - c
-	zh := (x >> _W2) - (y >> _W2) - (zl >> (_W-1))
-	z1 = zh >> (_W-1)
-	z0 = (zh << _W2) + (zl & _M2)
+	z0 = x - y - c
+	// see "Hacker's Delight", section 2-12 (overflow detection)
+	z1 = (y&^x | (y|^x)&z0) >> (_W - 1)
 	return
 }
 
