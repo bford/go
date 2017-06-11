@@ -694,6 +694,7 @@ var natPool sync.Pool
 // Preconditions:
 //    len(v) >= 2
 //    len(uIn) >= len(v)
+//    v normalized
 func (z nat) cdivLarge(u, uIn, v nat, zcap int) (q, r nat) {
 	n := len(v)
 	m := len(uIn) - n
@@ -740,7 +741,6 @@ func (z nat) cdivLarge(u, uIn, v nat, zcap int) (q, r nat) {
 			x1, x2 := mulWW(qhat, vn2)
 			// test if q̂v_{n-2} > br̂ + u_{j+n-2}
 			ujn2 := u[j+n-2]
-			nn := 0
 			for greaterThan(x1, x2, rhat, ujn2) {
 				nn++
 				qhat--
@@ -751,9 +751,6 @@ func (z nat) cdivLarge(u, uIn, v nat, zcap int) (q, r nat) {
 					break
 				}
 				x1, x2 = mulWW(qhat, vn2)
-			}
-			if nn > 2 {
-				println("nn ", nn)
 			}
 		}
 
