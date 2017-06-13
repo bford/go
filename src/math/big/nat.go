@@ -742,7 +742,6 @@ func (z nat) cdivLarge(u, uIn, v nat, zcap int) (q, r nat) {
 			// test if q̂v_{n-2} > br̂ + u_{j+n-2}
 			ujn2 := u[j+n-2]
 			for greaterThan(x1, x2, rhat, ujn2) {
-				nn++
 				qhat--
 				prevRhat := rhat
 				rhat += vn1
