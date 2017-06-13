@@ -449,8 +449,9 @@ func (x *Int) BitCap() int {
 //	SetUint64
 //	Bits
 //	SetBits
-// XXX Bytes
 //	SetBytes
+//
+// XXX high-priority: need to add Bytes, Div, Mod, and DivMod to this list.
 //
 func (x *Int) SetBitCap(cap int) *Int {
 	if cap < 0 {
